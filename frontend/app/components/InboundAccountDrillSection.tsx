@@ -5,13 +5,19 @@ import { InboundRow, CategoryGroup, SubCategoryRow, MONTHS } from "../../lib/typ
 import { ChevronDownIcon, ChevronRightIcon } from "./Icons";
 import { fmtAmt } from "../../lib/utils";
 
+function isOldSeason(중분류: string, cutoff: number): boolean {
+  if (중분류 === "과시즌") return false;
+  const yr = parseInt(중분류.slice(0, 2));
+  return !isNaN(yr) && yr < cutoff;
+}
+
 // ─────────────────────────────────────────────
 // 중분류 행 (leaf)
 // ─────────────────────────────────────────────
 function SubCategoryTr({ sub, depth }: { sub: SubCategoryRow; depth: number }) {
   const indent = depth * 20;
   const rowTotal = MONTHS.reduce((s, m) => s + (sub.months[m] ?? 0), 0);
-  const subLabels = sub.monthLabels ?? {};
+  const subLabels: Record<number, string> = {};
 
   return (
     <tr className="bg-slate-50/40">
@@ -34,15 +40,67 @@ function SubCategoryTr({ sub, depth }: { sub: SubCategoryRow; depth: number }) {
 }
 
 // ─────────────────────────────────────────────
+// 과시즌 그룹 행 (접기/펴기)
+// ─────────────────────────────────────────────
+function PastSeasonGroup({
+  subs,
+  depth,
+}: {
+  subs: SubCategoryRow[];
+  depth: number;
+}) {
+  const [pastOpen, setPastOpen] = useState(false);
+  const indent = depth * 20;
+  const sumMonths: Record<number, number> = {};
+  MONTHS.forEach((m) => {
+    sumMonths[m] = subs.reduce((s, sub) => s + (sub.months[m] ?? 0), 0);
+  });
+  const sumTotal = MONTHS.reduce((s, m) => s + (sumMonths[m] ?? 0), 0);
+
+  return (
+    <>
+      <tr
+        className="cursor-pointer bg-slate-50/40 hover:brightness-[0.97]"
+        onClick={() => setPastOpen((v) => !v)}
+      >
+        <td className="sticky left-0 z-10 min-w-[240px] border-b border-stone-100 bg-slate-50/40 px-6 py-2 text-sm">
+          <div className="flex items-center gap-1 text-slate-500" style={{ paddingLeft: `${indent}px` }}>
+            <span className="mr-1 text-slate-300 select-none">└</span>
+            {pastOpen ? (
+              <ChevronDownIcon className="h-3 w-3 text-slate-400" />
+            ) : (
+              <ChevronRightIcon className="h-3 w-3 text-slate-400" />
+            )}
+            <span className="text-[12px] text-slate-500">과시즌</span>
+            <span className="ml-1 text-[10px] text-slate-400">({subs.length})</span>
+          </div>
+        </td>
+        {MONTHS.map((m) => (
+          <td key={m} className="whitespace-nowrap border-b border-stone-100 bg-slate-50/40 px-3 py-2 text-right text-[12px] text-slate-500 tabular-nums">
+            {fmtAmt(sumMonths[m])}
+          </td>
+        ))}
+        <td className="whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-2 text-right text-[12px] text-slate-500 tabular-nums">
+          {fmtAmt(sumTotal)}
+        </td>
+      </tr>
+      {pastOpen &&
+        subs.map((sub) => (
+          <SubCategoryTr key={sub.중분류} sub={sub} depth={depth + 1} />
+        ))}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 대분류 행 (접기/펴기)
 // ─────────────────────────────────────────────
-function CategorySection({ cat, depth }: { cat: CategoryGroup; depth: number }) {
+function CategorySection({ cat, depth, seasonCutoffYear }: { cat: CategoryGroup; depth: number; seasonCutoffYear?: number }) {
   const [open, setOpen] = useState(false);
   const indent = depth * 20;
   const catTotal = MONTHS.reduce((s, m) => s + (cat.months[m] ?? 0), 0);
-  // 하위 중분류의 monthLabels 합집합으로 대분류 계획월 도출
   const catLabeledMonths = new Set<number>(
-    cat.subcategories.flatMap((s) => Object.keys(s.monthLabels ?? {}).map(Number))
+    [] as number[]
   );
 
   return (
@@ -65,10 +123,25 @@ function CategorySection({ cat, depth }: { cat: CategoryGroup; depth: number }) 
         </td>
       </tr>
 
-      {open &&
-        cat.subcategories.map((sub) => (
-          <SubCategoryTr key={sub.중분류} sub={sub} depth={depth + 1} />
-        ))}
+      {open && (() => {
+        if (cat.대분류 !== "의류" || !seasonCutoffYear) {
+          return cat.subcategories.map((sub) => (
+            <SubCategoryTr key={sub.중분류} sub={sub} depth={depth + 1} />
+          ));
+        }
+        const recent = cat.subcategories.filter((s) => !isOldSeason(s.중분류, seasonCutoffYear));
+        const old = cat.subcategories.filter((s) => isOldSeason(s.중분류, seasonCutoffYear));
+        return (
+          <>
+            {recent.map((sub) => (
+              <SubCategoryTr key={sub.중분류} sub={sub} depth={depth + 1} />
+            ))}
+            {old.length > 0 && (
+              <PastSeasonGroup subs={old} depth={depth + 1} />
+            )}
+          </>
+        );
+      })()}
     </>
   );
 }
@@ -80,9 +153,10 @@ interface Props {
   acc: InboundRow;
   idx: number;
   monthLabels?: Record<number, string>;
+  seasonCutoffYear?: number;
 }
 
-export default function InboundAccountDrillSection({ acc, idx, monthLabels = {} }: Props) {
+export default function InboundAccountDrillSection({ acc, idx, monthLabels = {}, seasonCutoffYear }: Props) {
   const [open, setOpen] = useState(false);
   const hasCategories = acc.categories && acc.categories.length > 0;
   const rowTotal = MONTHS.reduce((s, m) => s + (acc.months[m] ?? 0), 0);
@@ -122,7 +196,7 @@ export default function InboundAccountDrillSection({ acc, idx, monthLabels = {} 
 
       {open &&
         acc.categories?.map((cat) => (
-          <CategorySection key={cat.대분류} cat={cat} depth={1} />
+          <CategorySection key={cat.대분류} cat={cat} depth={1} seasonCutoffYear={seasonCutoffYear} />
         ))}
     </>
   );

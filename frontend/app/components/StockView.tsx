@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   StockData,
   InboundData,
-  InboundRow,
   RetailData,
   RetailRow,
   AccountRow,
   CategoryGroup,
   SubCategoryRow,
-  OtbData,
+  AppOtbData,
   BrandKey,
   BRAND_ORDER,
   MONTHS,
@@ -20,7 +19,8 @@ import InboundTable from "./InboundTable";
 import RetailTable from "./RetailTable";
 import GrowthRateTable from "./GrowthRateTable";
 import KeyMetricsTable from "./KeyMetricsTable";
-import AccDaysSupplyTable, { type AccDaysSupplyData } from "./AccDaysSupplyTable";
+import BrandInventoryCard from "./BrandInventoryCard";
+import AppOtbTable from "./AppOtbTable";
 import { fmtAmt } from "../../lib/utils";
 
 interface Props {
@@ -29,7 +29,7 @@ interface Props {
   inbound2025: InboundData | null;
   inbound2026: InboundData | null;
   retail2026: RetailData | null;
-  otb2026: OtbData | null;
+  appOtb2026: AppOtbData | null;
 }
 
 const YEARS = ["2025", "2026"] as const;
@@ -245,9 +245,6 @@ function blendRetail(
   return { data: { year: "2026", brands }, estimatedMonths };
 }
 
-// ─── 2026 입고물량 계획월 혼합 ───────────────
-const EMPTY_MONTHS: Record<number, number> = Object.fromEntries(MONTHS.map((m) => [m, 0]));
-
 // ─── 브랜드별 집계 헬퍼 ─────────────────────────────────────────
 function sumBrandInbound(data: InboundData | null): Record<string, number> {
   const result: Record<string, number> = {};
@@ -279,255 +276,6 @@ function brandStock12(data: StockData | null): Record<string, number> {
   return result;
 }
 
-// ─── ACC 재고주수용 집계 ─────────────────────────────────────────
-type AccByBrandItem = Record<string, Record<number, number>>; // brand → { total, 신발, 모자, 가방, 기타 } → month → value
-
-function getAccStockByBrandAndItem(stock: StockData | null): Record<string, AccByBrandItem> {
-  const result: Record<string, AccByBrandItem> = {};
-  for (const brand of BRAND_ORDER) {
-    const items: AccByBrandItem = { total: { ...EMPTY_MONTHS }, 신발: { ...EMPTY_MONTHS }, 모자: { ...EMPTY_MONTHS }, 가방: { ...EMPTY_MONTHS }, 기타: { ...EMPTY_MONTHS } };
-    for (const row of stock?.brands[brand] ?? []) {
-      for (const cat of row.categories ?? []) {
-        if (cat.대분류 !== "ACC") continue;
-        for (const sub of cat.subcategories) {
-          const key = ACC_ORDER.includes(sub.중분류) ? sub.중분류 : "기타";
-          for (const m of MONTHS) {
-            const v = sub.months[m] ?? 0;
-            items[key][m] += v;
-            items.total[m] += v;
-          }
-        }
-      }
-    }
-    result[brand] = items;
-  }
-  return result;
-}
-
-function getAccRetailByBrandAndItem(retail: RetailData | null): Record<string, AccByBrandItem> {
-  const result: Record<string, AccByBrandItem> = {};
-  for (const brand of BRAND_ORDER) {
-    const items: AccByBrandItem = { total: { ...EMPTY_MONTHS }, 신발: { ...EMPTY_MONTHS }, 모자: { ...EMPTY_MONTHS }, 가방: { ...EMPTY_MONTHS }, 기타: { ...EMPTY_MONTHS } };
-    for (const row of retail?.brands[brand] ?? []) {
-      for (const cat of row.categories ?? []) {
-        if (cat.대분류 !== "ACC") continue;
-        for (const sub of cat.subcategories) {
-          const key = ACC_ORDER.includes(sub.중분류) ? sub.중분류 : "기타";
-          for (const m of MONTHS) {
-            const v = sub.months[m] ?? 0;
-            items[key][m] += v;
-            items.total[m] += v;
-          }
-        }
-      }
-    }
-    result[brand] = items;
-  }
-  return result;
-}
-
-function getDaysInMonth(month: number, year: string): number {
-  const y = parseInt(year, 10);
-  if (month === 2) return y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28;
-  if ([4, 6, 9, 11].includes(month)) return 30;
-  return 31;
-}
-
-// 재고주수(주) = 당월말재고 ÷ (주당리테일) = 당월말재고 × (당월일수÷7) ÷ 당월리테일
-function calcWeeks(endStock: number, days: number, retailVal: number): number | null {
-  if (retailVal <= 0) return null;
-  return Math.round((endStock * (days / 7)) / retailVal * 10) / 10;
-}
-
-function computeAccDaysSupply(
-  stock: StockData | null,
-  retail: RetailData | null,
-  year: string
-): AccDaysSupplyData | null {
-  if (!stock || !retail) return null;
-  const accStock = getAccStockByBrandAndItem(stock);
-  const accRetail = getAccRetailByBrandAndItem(retail);
-
-  const result: AccDaysSupplyData = {};
-  for (const brand of BRAND_ORDER) {
-    // 아이템별 브랜드 합계
-    const brandEntry: AccDaysSupplyData[string] = {
-      total: {}, 신발: {}, 모자: {}, 가방: {}, 기타: {}, accounts: [],
-    };
-    type BrandItemKey = "total" | "신발" | "모자" | "가방" | "기타";
-    for (const item of ["total", ...ACC_ORDER] as const) {
-      const st = accStock[brand][item];
-      const rt = accRetail[brand][item];
-      for (const m of MONTHS) {
-        const days = getDaysInMonth(m, year);
-        (brandEntry[item as BrandItemKey] as Record<number, number | null>)[m] = calcWeeks(st[m] ?? 0, days, rt[m] ?? 0);
-      }
-    }
-
-    // 계정(대리상)별 ACC 합계 (전체 + 아이템별)
-    const retailByAccId = new Map(
-      (retail.brands[brand] ?? []).map((r) => [r.account_id, r])
-    );
-    for (const stockAcc of stock.brands[brand] ?? []) {
-      const retailAcc = retailByAccId.get(stockAcc.account_id);
-      const accMths: Record<number, number | null> = {};
-      const itemMths: Record<string, Record<number, number | null>> = {
-        신발: {}, 모자: {}, 가방: {}, 기타: {},
-      };
-      for (const m of MONTHS) {
-        const days = getDaysInMonth(m, year);
-        // 전체 ACC 합계
-        let endStockTotal = 0;
-        let retailValTotal = 0;
-        // 아이템별 합계
-        const endStockItem: Record<string, number> = { 신발: 0, 모자: 0, 가방: 0, 기타: 0 };
-        const retailValItem: Record<string, number> = { 신발: 0, 모자: 0, 가방: 0, 기타: 0 };
-        for (const cat of stockAcc.categories ?? []) {
-          if (cat.대분류 !== "ACC") continue;
-          for (const sub of cat.subcategories) {
-            const key = ACC_ORDER.includes(sub.중분류 as typeof ACC_ORDER[number]) ? sub.중분류 : "기타";
-            const v = sub.months[m] ?? 0;
-            endStockTotal += v;
-            endStockItem[key] = (endStockItem[key] ?? 0) + v;
-          }
-        }
-        for (const cat of retailAcc?.categories ?? []) {
-          if (cat.대분류 !== "ACC") continue;
-          for (const sub of cat.subcategories) {
-            const key = ACC_ORDER.includes(sub.중분류 as typeof ACC_ORDER[number]) ? sub.중분류 : "기타";
-            const v = sub.months[m] ?? 0;
-            retailValTotal += v;
-            retailValItem[key] = (retailValItem[key] ?? 0) + v;
-          }
-        }
-        accMths[m] = calcWeeks(endStockTotal, days, retailValTotal);
-        for (const item of ACC_ORDER) {
-          itemMths[item][m] = calcWeeks(endStockItem[item] ?? 0, days, retailValItem[item] ?? 0);
-        }
-      }
-      brandEntry.accounts.push({
-        id: stockAcc.account_id,
-        name: stockAcc.account_nm_en || stockAcc.account_id,
-        months: accMths,
-        신발: itemMths["신발"],
-        모자: itemMths["모자"],
-        가방: itemMths["가방"],
-        기타: itemMths["기타"],
-      });
-    }
-    // 재고주수 전체 합계 기준 내림차순 정렬 (값 있는 것만)
-    brandEntry.accounts.sort((a, b) => {
-      const sa = MONTHS.reduce((s, m) => s + (a.months[m] ?? 0), 0);
-      const sb = MONTHS.reduce((s, m) => s + (b.months[m] ?? 0), 0);
-      return sb - sa;
-    });
-
-    result[brand] = brandEntry;
-  }
-  return result;
-}
-
-// ─── 2026 입고물량 블렌딩 ─────────────────────────────────────────
-// 실적월: inbound2026 값 사용
-// 계획월: otb2026 월별 값 사용 (pr_customer_req_dt 기준)
-// 행 기준: otb2026 계정·대분류·중분류 ∪ inbound2026 계정·대분류·중분류
-function blendInbound2026(
-  inbound2026: InboundData | null,
-  otb2026: OtbData | null
-): InboundData {
-  const brands: Record<string, InboundRow[]> = {};
-
-  for (const brand of BRAND_ORDER as BrandKey[]) {
-    const accs26 = inbound2026?.brands[brand] ?? [];
-    const otbRows = otb2026?.brands[brand] ?? [];
-
-    const acc26Map = new Map(accs26.map((a) => [a.account_id, a]));
-    const otbByAcc = new Map(otbRows.map((r) => [r.account_id, r]));
-
-    // 계정 목록: otb2026 ∪ inbound2026
-    const allAccountIds = new Set([
-      ...otbRows.map((r) => r.account_id),
-      ...accs26.map((a) => a.account_id),
-    ]);
-
-    const rows: InboundRow[] = Array.from(allAccountIds).map((accountId) => {
-      const acc26 = acc26Map.get(accountId);
-      const otbRow = otbByAcc.get(accountId);
-
-      // 대분류 목록: otb ∪ inbound26
-      const catKeys = new Set([
-        ...(otbRow?.categories.map((c) => c.대분류) ?? []),
-        ...(acc26?.categories?.map((c) => c.대분류) ?? []),
-      ]);
-
-      const newCats: CategoryGroup[] = Array.from(catKeys).map((대분류) => {
-        const cat26 = acc26?.categories?.find((c) => c.대분류 === 대분류);
-        const otbCat = otbRow?.categories.find((c) => c.대분류 === 대분류);
-
-        // 중분류 목록: otb ∪ inbound26
-        const subKeys = new Set([
-          ...(otbCat?.subcategories.map((s) => s.중분류) ?? []),
-          ...(cat26?.subcategories.map((s) => s.중분류) ?? []),
-        ]);
-
-        const subs: SubCategoryRow[] = Array.from(subKeys).map((중분류) => {
-          const sub26 = cat26?.subcategories.find((s) => s.중분류 === 중분류);
-          const otbSub = otbCat?.subcategories.find((s) => s.중분류 === 중분류);
-          const months: Record<number, number> = { ...EMPTY_MONTHS };
-          const monthLabels: Record<number, string> = {};
-
-          for (const m of MONTHS) {
-            const actualVal = sub26?.months[m] ?? 0;
-            if (actualVal !== 0) {
-              months[m] = actualVal;
-            } else {
-              const planVal = otbSub?.months?.[String(m)] ?? 0;
-              months[m] = planVal;
-              if (planVal > 0) monthLabels[m] = "OTB";
-            }
-          }
-
-          return {
-            중분류,
-            months,
-            monthLabels: Object.keys(monthLabels).length > 0 ? monthLabels : undefined,
-          };
-        });
-
-        // 중분류 정렬
-        subs.sort((a, b) => cmpSesn(a.중분류, b.중분류));
-
-        const catMonths: Record<number, number> = {};
-        for (const m of MONTHS) catMonths[m] = subs.reduce((s, sub) => s + (sub.months[m] ?? 0), 0);
-
-        return { 대분류, months: catMonths, subcategories: subs };
-      });
-
-      // 대분류 정렬 (의류 → ACC)
-      newCats.sort((a, b) => {
-        const order: Record<string, number> = { "의류": 0, "ACC": 1 };
-        return (order[a.대분류] ?? 9) - (order[b.대분류] ?? 9);
-      });
-
-      const totalMonths: Record<number, number> = {};
-      for (const m of MONTHS) totalMonths[m] = newCats.reduce((s, cat) => s + (cat.months[m] ?? 0), 0);
-
-      return {
-        account_id: accountId,
-        account_nm_en: acc26?.account_nm_en ?? otbRow?.account_nm ?? accountId,
-        sap_shop_cd: acc26?.sap_shop_cd ?? "",
-        months: totalMonths,
-        categories: newCats,
-      };
-    });
-
-    // account_id 순 정렬
-    rows.sort((a, b) => a.account_id.localeCompare(b.account_id));
-    brands[brand] = rows;
-  }
-
-  return { year: "2026", brands };
-}
 
 // ─── 2026년 재고잔액 계획월 계산 ────────────────
 // 실적월은 data2026 그대로, 계획월은 전월재고 + 입고물량 − 리테일매출
@@ -665,17 +413,14 @@ function blendStock2026(
 
 // ─── 섹션 헤더 컴포넌트들 ─────────────────────
 function SectionHeader({
-  title, unit, basicCmd, fullCmd, hint, range, extraCmds, otbSummary, otbMonthRange,
+  title, unit, basicCmd, fullCmd, hint, range,
 }: {
   title: string;
   unit: string;
   basicCmd: string;
-  fullCmd: string;
+  fullCmd?: string;
   hint: string;
   range: string;
-  extraCmds?: string[];
-  otbSummary?: Record<string, { 의류: number; ACC: number }> | null;
-  otbMonthRange?: string;
 }) {
   return (
     <div className="mb-4 flex flex-col gap-1.5">
@@ -686,36 +431,16 @@ function SectionHeader({
           <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-slate-500">{unit}</span>
           <span className="text-slate-400">|</span>
           <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">{basicCmd}</code>
-          <span className="text-slate-400">|</span>
-          <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">{fullCmd}</code>
-          {extraCmds?.map((cmd) => (
-            <span key={cmd} className="contents">
+          {fullCmd && fullCmd !== basicCmd && (
+            <>
               <span className="text-slate-400">|</span>
-              <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">{cmd}</code>
-            </span>
-          ))}
+              <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">{fullCmd}</code>
+            </>
+          )}
         </h2>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">{range}</span>
       </div>
       <p className="text-[11px] text-slate-500">{hint}</p>
-      {otbSummary && otbMonthRange && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-          <span className="text-slate-400">OTB 반영 ({otbMonthRange}) :</span>
-          {BRAND_ORDER.map((brand) => {
-            const s = otbSummary[brand];
-            if (!s) return null;
-            return (
-              <span key={brand} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5">
-                <span className="font-semibold text-slate-600">{brand}</span>
-                <span className="text-slate-400">·</span>
-                <span>의류 {fmtAmt(s.의류)}</span>
-                <span className="text-slate-300">/</span>
-                <span>ACC {fmtAmt(s.ACC)}</span>
-              </span>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -756,10 +481,14 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
 
 // ─── 메인 컴포넌트 ────────────────────────────
 export default function StockView({
-  data2025, data2026, inbound2025, inbound2026, retail2026, otb2026,
+  data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026,
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
   const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
+  const [brandMetrics, setBrandMetrics] = useState<Record<string, { purchase: number; sales: number; ending: number }>>({});
+  const handleMetricsChange = useCallback((brand: string, m: { purchase: number; sales: number; ending: number }) => {
+    setBrandMetrics((prev) => ({ ...prev, [brand]: m }));
+  }, []);
 
   useEffect(() => {
     fetch("/data/growth_rates_default.json")
@@ -771,17 +500,22 @@ export default function StockView({
   const currentInbound =
     activeYear === "2025"
       ? inbound2025
-      : blendInbound2026(inbound2026, otb2026);
+      : inbound2026;
 
-  // 2025: calcRetail 계산값
-  const retail2025calc =
-    data2025 && inbound2025 ? calcRetail(data2025, inbound2025) : null;
+  // 2025: calcRetail 계산값 (memoized — 의존성이 바뀔 때만 재계산)
+  const retail2025calc = useMemo(
+    () => (data2025 && inbound2025 ? calcRetail(data2025, inbound2025) : null),
+    [data2025, inbound2025]
+  );
 
   // 2026: actual + estimated 혼합
-  const blended =
-    activeYear === "2026" && retail2026 && retail2025calc
-      ? blendRetail(retail2026, retail2025calc, growthRates)
-      : null;
+  const blended = useMemo(
+    () =>
+      activeYear === "2026" && retail2026 && retail2025calc
+        ? blendRetail(retail2026, retail2025calc, growthRates)
+        : null,
+    [activeYear, retail2026, retail2025calc, growthRates]
+  );
 
   const currentRetail: RetailData | null =
     activeYear === "2025"
@@ -790,73 +524,17 @@ export default function StockView({
 
   const estimatedMonths = blended?.estimatedMonths ?? [];
 
-  // 2026년 재고잔액 계획월 계산 (retail → inbound → stock 순으로 의존)
-  const blendedStock =
-    activeYear === "2026"
-      ? blendStock2026(data2026, currentInbound, currentRetail)
-      : null;
+  // 2026년 재고잔액 계획월 계산 (memoized)
+  const blendedStock = useMemo(
+    () =>
+      activeYear === "2026"
+        ? blendStock2026(data2026, currentInbound, currentRetail)
+        : null,
+    [activeYear, data2026, currentInbound, currentRetail]
+  );
   const currentStock = activeYear === "2025" ? data2025 : (blendedStock?.data ?? data2026);
   const stockEstimatedMonths = blendedStock?.estimatedMonths ?? [];
 
-  const accDaysSupply = computeAccDaysSupply(currentStock, currentRetail, activeYear);
-
-  // 입고물량 계획월 레이블: blended inbound의 subcategory monthLabels 합집합
-  // 실적이 있는 월(어느 subcategory라도)은 레이블 제거
-  const inboundMonthLabels = (() => {
-    if (activeYear !== "2026" || !currentInbound) return {} as Record<number, string>;
-    const labels: Record<number, string> = {};
-    const actualSet = new Set<number>();
-    for (const brand of BRAND_ORDER) {
-      for (const acc of currentInbound.brands[brand] ?? []) {
-        for (const cat of acc.categories ?? []) {
-          for (const sub of cat.subcategories) {
-            const subLabels = sub.monthLabels ?? {};
-            Object.entries(subLabels).forEach(([m, label]) => {
-              if (!labels[Number(m)]) labels[Number(m)] = label;
-            });
-            MONTHS.forEach((m) => {
-              if ((sub.months[m] ?? 0) !== 0 && !subLabels[m]) actualSet.add(m);
-            });
-          }
-        }
-      }
-    }
-    actualSet.forEach((m) => delete labels[m]);
-    return labels;
-  })();
-
-  // OTB 브랜드별 합계 (2026년, otb2026 있을 때만)
-  // OTB 브랜드별 합계 — inboundMonthLabels 기준 계획월만 합산 (실적 대체된 월 제외)
-  const otbSummary = (() => {
-    if (!otb2026 || activeYear !== "2026") return null;
-    const planMonths = new Set(Object.keys(inboundMonthLabels).map(Number));
-    if (planMonths.size === 0) return null;
-    const result: Record<string, { 의류: number; ACC: number }> = {};
-    for (const brand of BRAND_ORDER) {
-      let appTotal = 0, accTotal = 0;
-      for (const row of otb2026.brands[brand] ?? []) {
-        for (const cat of row.categories) {
-          const catSum = cat.subcategories.reduce(
-            (s, sub) =>
-              s + Object.entries(sub.months).reduce(
-                (a, [m, v]) => a + (planMonths.has(Number(m)) ? v : 0), 0
-              ), 0
-          );
-          if (cat.대분류 === "의류") appTotal += catSum;
-          else if (cat.대분류 === "ACC") accTotal += catSum;
-        }
-      }
-      result[brand] = { 의류: appTotal, ACC: accTotal };
-    }
-    return result;
-  })();
-
-  // OTB 반영월 범위 문자열 (예: "3~12월", "3월")
-  const otbMonthRange = (() => {
-    const months = Object.keys(inboundMonthLabels).map(Number).sort((a, b) => a - b);
-    if (months.length === 0) return "";
-    return months.length === 1 ? `${months[0]}월` : `${months[0]}~${months[months.length - 1]}월`;
-  })();
 
   return (
     <div>
@@ -885,15 +563,29 @@ export default function StockView({
             <GrowthRateTable rates={growthRates} onChange={setGrowthRates} />
             <KeyMetricsTable
               inboundPrev={sumBrandInbound(inbound2025)}
-              inboundCurr={sumBrandInbound(currentInbound)}
+              inboundCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.purchase ?? 0]))}
               retailPrev={sumBrandRetail(retail2025calc)}
-              retailCurr={sumBrandRetail(currentRetail)}
+              retailCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.sales ?? 0]))}
               stockPrev={brandStock12(data2025)}
-              stockCurr={brandStock12(currentStock)}
+              stockCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.ending ?? 0]))}
             />
           </div>
         )}
-        <AccDaysSupplyTable data={accDaysSupply} year={activeYear} />
+        {/* 브랜드별 재고자산표 */}
+        <div className="mb-6 flex flex-wrap gap-4">
+          {BRAND_ORDER.map((brand) => (
+            <BrandInventoryCard
+              key={brand}
+              brand={brand}
+              stock={currentStock}
+              stockPrev={data2025}
+              retail={currentRetail}
+              year={activeYear}
+              appOtb={appOtb2026}
+              onMetricsChange={handleMetricsChange}
+            />
+          ))}
+        </div>
         <RetailSectionHeader
           title="리테일매출"
           unit="천위안"
@@ -939,14 +631,10 @@ export default function StockView({
           fullCmd="python scripts/preprocess_inbound.py --full"
           hint="기본: 2025 스킵, 2026 추가된 완료월만 조회 · --full: 2025~2026 전기간 재조회 (로직 변경 시)"
           range={`${activeYear}년 1월 ~ 12월`}
-          extraCmds={activeYear === "2026" ? ["python scripts/preprocess_otb.py"] : undefined}
-          otbSummary={otbSummary}
-          otbMonthRange={otbMonthRange}
         />
         {currentInbound ? (
           <InboundTable
             data={currentInbound}
-            monthLabels={inboundMonthLabels}
           />
         ) : (
           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
@@ -956,6 +644,28 @@ export default function StockView({
           </div>
         )}
       </div>
+
+      {/* 의류 OTB 섹션 (2026년 탭만) */}
+      {activeYear === "2026" && (
+        <div className="mb-10">
+          <SectionHeader
+            title="의류 OTB"
+            unit="천위안"
+            basicCmd="python scripts/preprocess_app_otb.py"
+            hint="OTB: OTB_K.csv · 누적입고: Snowflake 2025-10 ~ 기준월 (의류, 26S/26F/27S/27F)"
+            range="2026년"
+          />
+          {appOtb2026 ? (
+            <AppOtbTable appOtb={appOtb2026} />
+          ) : (
+            <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
+              OTB 데이터 없음 —&nbsp;
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">python scripts/preprocess_app_otb.py</code>
+              &nbsp;실행 후 새로고침
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

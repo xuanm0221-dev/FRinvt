@@ -16,6 +16,7 @@ interface Props {
   accounts: RetailRow[];
   defaultOpen?: boolean;
   estimatedMonths?: number[];
+  seasonCutoffYear?: number;
 }
 
 export default function RetailBrandSection({
@@ -23,6 +24,7 @@ export default function RetailBrandSection({
   accounts,
   defaultOpen = false,
   estimatedMonths = [],
+  seasonCutoffYear,
 }: Props) {
   const estimatedSet = new Set(estimatedMonths);
   const [open, setOpen] = useState(defaultOpen);
@@ -81,6 +83,7 @@ export default function RetailBrandSection({
             acc={acc}
             idx={idx}
             estimatedMonths={estimatedMonths}
+            seasonCutoffYear={seasonCutoffYear}
           />
         ))}
     </tbody>

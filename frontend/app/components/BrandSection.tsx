@@ -16,6 +16,7 @@ interface Props {
   accounts: AccountRow[];
   defaultOpen?: boolean;
   estimatedMonths?: number[];
+  seasonCutoffYear?: number;
 }
 
 export default function BrandSection({
@@ -23,6 +24,7 @@ export default function BrandSection({
   accounts,
   defaultOpen = false,
   estimatedMonths = [],
+  seasonCutoffYear,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const estimatedSet = new Set(estimatedMonths);
@@ -75,7 +77,7 @@ export default function BrandSection({
       {/* 대리상 행 (각각 대분류/중분류 드릴다운 포함) */}
       {open &&
         accounts.map((acc, idx) => (
-          <StockAccountDrillSection key={acc.account_id} acc={acc} idx={idx} estimatedMonths={estimatedMonths} />
+          <StockAccountDrillSection key={acc.account_id} acc={acc} idx={idx} estimatedMonths={estimatedMonths} seasonCutoffYear={seasonCutoffYear} />
         ))}
     </tbody>
   );

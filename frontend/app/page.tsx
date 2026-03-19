@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import DashboardClient from "./DashboardClient";
-import { StockData, InboundData, RetailData, OtbData, BRAND_ORDER } from "../lib/types";
+import { StockData, InboundData, RetailData, AppOtbData, BRAND_ORDER } from "../lib/types";
 import path from "path";
 import fs from "fs";
 
@@ -34,7 +34,7 @@ export default async function Home() {
   const inbound2025 = loadJson<InboundData>("inbound_2025.json");
   const inbound2026 = loadJson<InboundData>("inbound_2026.json");
   const retail2026 = loadJson<RetailData>("retail_2026.json");
-  const otb2026 = loadJson<OtbData>("otb_2026.json");
+  const appOtb2026 = loadJson<AppOtbData>("app_otb_2026.json");
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
@@ -46,7 +46,7 @@ export default async function Home() {
             inbound2025={inbound2025}
             inbound2026={inbound2026}
             retail2026={retail2026}
-            otb2026={otb2026}
+            appOtb2026={appOtb2026}
           />
         </Suspense>
       </main>

@@ -41,13 +41,13 @@ CAT_ORDER = {"의류": 0, "ACC": 1}
 
 
 def sesn_to_midclass(sesn: str) -> str:
-    """시즌코드 → 중분류명. 연도 24 이상 그대로, 24 미만 → 과시즌"""
+    """시즌코드 → 중분류명. 유효한 시즌코드는 그대로 유지 (과시즌 그룹핑은 프론트엔드에서 처리)"""
     if not sesn or not str(sesn).strip():
         return "과시즌"
     s = str(sesn).strip()
     try:
-        year = int(s[:2])
-        return s if year >= 24 else "과시즌"
+        int(s[:2])  # 유효한 시즌코드인지 확인 (예: 24S, 23F)
+        return s
     except (ValueError, IndexError):
         return "과시즌"
 

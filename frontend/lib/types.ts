@@ -3,7 +3,6 @@ export interface SubCategoryRow {
   base_stock?: number;
   months: Record<number, number>;
   estimatedMonths?: number[];            // 리테일·재고 계획월 (F 표시)
-  monthLabels?: Record<number, string>;  // 입고 OTB 계획월 → "OTB"
 }
 
 export interface CategoryGroup {
@@ -75,25 +74,23 @@ export interface RetailData {
   brands: Record<string, RetailRow[]>;
 }
 
-// ─── 입고 OTB (otb_2026.json) — pr_customer_req_dt 기준 월별 ──────
-// 의류 중분류 = 시즌(26S/26F 등), ACC 중분류 = 품목(신발/모자/가방/기타)
-export interface OtbSubCategory {
-  중분류: string;
-  months: Record<string, number>;  // { "3": 500, "4": 800, ... }
+// ─── 의류 OTB (app_otb_2026.json) ────────────────────────────────
+export interface AppOtbSeasonData {
+  otb: number;
+  cum2025: number;
+  cum2026: number;
+  planned: number;
 }
 
-export interface OtbCategory {
-  대분류: string;  // 의류 | ACC
-  subcategories: OtbSubCategory[];
-}
-
-export interface OtbRow {
+export interface AppOtbAccountRow {
   account_id: string;
-  account_nm: string;
-  categories: OtbCategory[];
+  account_nm_en: string;
+  seasons: Record<string, AppOtbSeasonData>;
 }
 
-export interface OtbData {
+export interface AppOtbData {
   year: string;
-  brands: Record<string, OtbRow[]>;
+  cumLabel: string;  // 예: "26.02" → 누적입고 기준월
+  brands: Record<string, AppOtbAccountRow[]>;
 }
+

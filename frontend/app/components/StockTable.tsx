@@ -59,6 +59,7 @@ export default function StockTable({ data, estimatedMonths = [] }: Props) {
               accounts={data.brands[brand] ?? []}
               defaultOpen={false}
               estimatedMonths={estimatedMonths}
+              seasonCutoffYear={parseInt(data.year.slice(2)) - 2}
             />
           ))}
 

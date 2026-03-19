@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { StockData, InboundData, RetailData, OtbData } from "../lib/types";
+import { StockData, InboundData, RetailData, AppOtbData } from "../lib/types";
 import StockView from "./components/StockView";
 import PLView from "./components/PLView";
 import { TableIcon, ChartBarIcon } from "./components/Icons";
@@ -12,7 +12,7 @@ interface Props {
   inbound2025: InboundData | null;
   inbound2026: InboundData | null;
   retail2026: RetailData | null;
-  otb2026: OtbData | null;
+  appOtb2026: AppOtbData | null;
 }
 
 const TABS = [
@@ -22,7 +22,7 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export default function DashboardClient({ data2025, data2026, inbound2025, inbound2026, retail2026, otb2026 }: Props) {
+export default function DashboardClient({ data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
 
   return (
@@ -65,7 +65,7 @@ export default function DashboardClient({ data2025, data2026, inbound2025, inbou
             inbound2025={inbound2025}
             inbound2026={inbound2026}
             retail2026={retail2026}
-            otb2026={otb2026}
+            appOtb2026={appOtb2026}
           />
         )}
         {activeTab === "pl" && <PLView />}

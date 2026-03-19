@@ -60,6 +60,7 @@ export default function InboundTable({ data, monthLabels = {} }: Props) {
               accounts={data.brands[brand] ?? []}
               defaultOpen={false}
               monthLabels={monthLabels}
+              seasonCutoffYear={parseInt(data.year.slice(2)) - 2}
             />
           ))}
 

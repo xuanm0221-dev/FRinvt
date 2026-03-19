@@ -16,6 +16,7 @@ interface Props {
   accounts: InboundRow[];
   defaultOpen?: boolean;
   monthLabels?: Record<number, string>;
+  seasonCutoffYear?: number;
 }
 
 export default function InboundBrandSection({
@@ -23,6 +24,7 @@ export default function InboundBrandSection({
   accounts,
   defaultOpen = false,
   monthLabels = {},
+  seasonCutoffYear,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const estimatedSet = new Set(Object.keys(monthLabels).map(Number));
@@ -79,6 +81,7 @@ export default function InboundBrandSection({
             acc={acc}
             idx={idx}
             monthLabels={monthLabels}
+            seasonCutoffYear={seasonCutoffYear}
           />
         ))}
     </tbody>
