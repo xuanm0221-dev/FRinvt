@@ -50,10 +50,6 @@ export default function DashboardClient({ data2025, data2026, inbound2025, inbou
               </button>
             ))}
           </div>
-
-          <span className="ml-auto whitespace-nowrap text-sm font-medium text-slate-400">
-            중국 대리상 재고잔액 현황
-          </span>
         </div>
       </header>
 

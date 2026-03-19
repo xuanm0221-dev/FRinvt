@@ -485,8 +485,8 @@ export default function StockView({
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
   const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
-  const [brandMetrics, setBrandMetrics] = useState<Record<string, { purchase: number; sales: number; ending: number }>>({});
-  const handleMetricsChange = useCallback((brand: string, m: { purchase: number; sales: number; ending: number }) => {
+  const [brandMetrics, setBrandMetrics] = useState<Record<string, { purchase: number; sales: number; ending: number; prevEnding?: number; prevInbound?: number; prevRetail?: number }>>({});
+  const handleMetricsChange = useCallback((brand: string, m: { purchase: number; sales: number; ending: number; prevEnding?: number; prevInbound?: number; prevRetail?: number }) => {
     setBrandMetrics((prev) => ({ ...prev, [brand]: m }));
   }, []);
 
@@ -562,11 +562,20 @@ export default function StockView({
           <div className="mb-6 flex flex-wrap items-start gap-6">
             <GrowthRateTable rates={growthRates} onChange={setGrowthRates} />
             <KeyMetricsTable
-              inboundPrev={sumBrandInbound(inbound2025)}
+              inboundPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
+                b,
+                brandMetrics[b]?.prevInbound ?? sumBrandInbound(inbound2025)[b] ?? 0,
+              ]))}
               inboundCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.purchase ?? 0]))}
-              retailPrev={sumBrandRetail(retail2025calc)}
+              retailPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
+                b,
+                brandMetrics[b]?.prevRetail ?? sumBrandRetail(retail2025calc)[b] ?? 0,
+              ]))}
               retailCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.sales ?? 0]))}
-              stockPrev={brandStock12(data2025)}
+              stockPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
+                b,
+                brandMetrics[b]?.prevEnding ?? brandStock12(data2025)[b] ?? 0,
+              ]))}
               stockCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.ending ?? 0]))}
             />
           </div>
@@ -580,12 +589,16 @@ export default function StockView({
               stock={currentStock}
               stockPrev={data2025}
               retail={currentRetail}
+              inbound={currentInbound}
+              inboundPrev={inbound2025}
+              retailPrev={retail2025calc}
               year={activeYear}
               appOtb={appOtb2026}
               onMetricsChange={handleMetricsChange}
             />
           ))}
         </div>
+        <hr className="my-6 border-0 border-t-2 border-slate-200" />
         <RetailSectionHeader
           title="리테일매출"
           unit="천위안"
