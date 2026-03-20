@@ -11,6 +11,7 @@ interface Props {
   retailCurr: Record<string, number>;
   stockPrev: Record<string, number>;
   stockCurr: Record<string, number>;
+  brand?: BrandKey;
 }
 
 function fmtPct(value: number): string {
@@ -108,13 +109,15 @@ export default function KeyMetricsTable({
   inboundPrev, inboundCurr,
   retailPrev, retailCurr,
   stockPrev, stockCurr,
+  brand,
 }: Props) {
+  const brands = brand ? [brand] : BRAND_ORDER;
   return (
     <div className="mb-6 flex flex-1 flex-wrap gap-4">
-      {BRAND_ORDER.map((brand) => (
+      {brands.map((b) => (
         <BrandMetricCard
-          key={brand}
-          brand={brand}
+          key={b}
+          brand={b}
           inboundPrev={inboundPrev}
           inboundCurr={inboundCurr}
           retailPrev={retailPrev}

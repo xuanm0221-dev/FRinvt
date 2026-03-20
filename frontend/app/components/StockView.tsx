@@ -17,11 +17,12 @@ import {
 import StockTable from "./StockTable";
 import InboundTable from "./InboundTable";
 import RetailTable from "./RetailTable";
-import GrowthRateTable from "./GrowthRateTable";
-import KeyMetricsTable from "./KeyMetricsTable";
-import BrandInventoryCard from "./BrandInventoryCard";
+import DealerDetailTable from "./DealerDetailTable";
 import AppOtbTable from "./AppOtbTable";
 import { fmtAmt } from "../../lib/utils";
+import { DEFAULT_TARGET_WEEKS } from "../../lib/dealerMetrics";
+
+export type AccountNameMap = Record<string, { account_nm_en: string; account_nm_kr: string }>;
 
 interface Props {
   data2025: StockData | null;
@@ -30,6 +31,7 @@ interface Props {
   inbound2026: InboundData | null;
   retail2026: RetailData | null;
   appOtb2026: AppOtbData | null;
+  accountNameMap?: AccountNameMap;
 }
 
 const YEARS = ["2025", "2026"] as const;
@@ -425,7 +427,7 @@ function SectionHeader({
   return (
     <div className="mb-4 flex flex-col gap-1.5">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="flex items-center gap-3 text-base font-semibold tracking-[-0.02em] text-slate-800">
+        <h2 className="flex items-center gap-3 text-sm font-semibold tracking-[-0.02em] text-slate-700">
           <span>{title}</span>
           <span className="text-slate-400">|</span>
           <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-slate-500">{unit}</span>
@@ -450,7 +452,7 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
   return (
     <div className="mb-4 flex flex-col gap-1.5">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="flex items-center gap-3 text-base font-semibold tracking-[-0.02em] text-slate-800">
+        <h2 className="flex items-center gap-3 text-sm font-semibold tracking-[-0.02em] text-slate-700">
           <span>{title}</span>
           <span className="text-slate-400">|</span>
           <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-slate-500">{unit}</span>
@@ -481,14 +483,13 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
 
 // ─── 메인 컴포넌트 ────────────────────────────
 export default function StockView({
-  data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026,
+  data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026, accountNameMap = {},
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
+  const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
   const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
-  const [brandMetrics, setBrandMetrics] = useState<Record<string, { purchase: number; sales: number; ending: number; prevEnding?: number; prevInbound?: number; prevRetail?: number }>>({});
-  const handleMetricsChange = useCallback((brand: string, m: { purchase: number; sales: number; ending: number; prevEnding?: number; prevInbound?: number; prevRetail?: number }) => {
-    setBrandMetrics((prev) => ({ ...prev, [brand]: m }));
-  }, []);
+  const [targetWeeks, setTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
+  const [sellThrough, setSellThrough] = useState(70);
 
   useEffect(() => {
     fetch("/data/growth_rates_default.json")
@@ -538,66 +539,68 @@ export default function StockView({
 
   return (
     <div>
-      {/* 연도 탭 */}
-      <div className="sticky top-[65px] z-30 mb-5 flex gap-2 border-b border-slate-200/80 bg-white/95 px-1 backdrop-blur">
-        {YEARS.map((year) => (
+      {/* 연도 + 브랜드 탭 (한 행) */}
+      <div className="sticky top-[65px] z-30 mb-5 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur">
+        {/* 브랜드 — 기존 카드 스타일 유지 */}
+        {BRAND_ORDER.map((b) => (
           <button
-            key={year}
-            onClick={() => setActiveYear(year)}
-            className={`-mb-px rounded-t-xl border border-b-0 px-5 py-2.5 text-sm font-semibold tracking-[0.01em] transition-all duration-200 ${
-              activeYear === year
+            key={b}
+            onClick={() => setSelectedBrand(b)}
+            className={`-mb-px rounded-t-xl border border-b-0 px-5 py-2 text-sm font-semibold tracking-[0.01em] transition-all duration-200 ${
+              selectedBrand === b
                 ? "border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] text-[#2f5f93] shadow-[0_-1px_0_rgba(255,255,255,0.9),0_10px_24px_rgba(53,92,138,0.10)]"
                 : "border-transparent bg-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white/70 hover:text-slate-700"
             }`}
           >
-            {year}년
+            {b}
           </button>
         ))}
+        <span className="h-5 w-px bg-slate-200" aria-hidden />
+        {/* 연도 — iPhone 세그먼트 컨트롤 스타일 */}
+        <div className="flex rounded-full bg-slate-200/70 p-0.5">
+          {YEARS.map((year) => (
+            <button
+              key={year}
+              onClick={() => setActiveYear(year)}
+              className={`min-w-[4rem] rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                activeYear === year
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {year}년
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 리테일매출 섹션 */}
       <div className="mb-10">
-        {/* 성장률 + 주요지표 — 2026년만 */}
-        {activeYear === "2026" && (
-          <div className="mb-6 flex flex-wrap items-start gap-6">
-            <GrowthRateTable rates={growthRates} onChange={setGrowthRates} />
-            <KeyMetricsTable
-              inboundPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
-                b,
-                brandMetrics[b]?.prevInbound ?? sumBrandInbound(inbound2025)[b] ?? 0,
-              ]))}
-              inboundCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.purchase ?? 0]))}
-              retailPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
-                b,
-                brandMetrics[b]?.prevRetail ?? sumBrandRetail(retail2025calc)[b] ?? 0,
-              ]))}
-              retailCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.sales ?? 0]))}
-              stockPrev={Object.fromEntries(BRAND_ORDER.map((b) => [
-                b,
-                brandMetrics[b]?.prevEnding ?? brandStock12(data2025)[b] ?? 0,
-              ]))}
-              stockCurr={Object.fromEntries(BRAND_ORDER.map((b) => [b, brandMetrics[b]?.ending ?? 0]))}
-            />
-          </div>
-        )}
-        {/* 브랜드별 재고자산표 */}
-        <div className="mb-6 flex flex-wrap gap-4">
-          {BRAND_ORDER.map((brand) => (
-            <BrandInventoryCard
-              key={brand}
-              brand={brand}
-              stock={currentStock}
-              stockPrev={data2025}
-              retail={currentRetail}
-              inbound={currentInbound}
-              inboundPrev={inbound2025}
-              retailPrev={retail2025calc}
-              year={activeYear}
-              appOtb={appOtb2026}
-              onMetricsChange={handleMetricsChange}
-            />
-          ))}
-        </div>
+        {/* 재고자산표 (GrowthRateTable은 DealerDetailTable 헤더로 이동) */}
+        <DealerDetailTable
+          brand={selectedBrand}
+          stock={currentStock}
+          stockPrev={data2025}
+          retail={currentRetail}
+          retailPrev={retail2025calc}
+          inbound={currentInbound}
+          inboundPrev={inbound2025}
+          appOtb={appOtb2026}
+          year={activeYear}
+          stock2025={data2025}
+          retail2025={retail2025calc}
+          inbound2025={inbound2025}
+          stock2026={blendedStock?.data ?? data2026}
+          retail2026={blended?.data ?? retail2026}
+          inbound2026={inbound2026}
+          growthRate={growthRates[selectedBrand]}
+          onGrowthRateChange={(v) => setGrowthRates((prev) => ({ ...prev, [selectedBrand]: v }))}
+          targetWeeks={targetWeeks}
+          onTargetWeeksChange={(item, v) => setTargetWeeks((prev) => ({ ...prev, [item]: v }))}
+          sellThrough={sellThrough}
+          onSellThroughChange={setSellThrough}
+          accountNameMap={accountNameMap}
+        />
         <hr className="my-6 border-0 border-t-2 border-slate-200" />
         <RetailSectionHeader
           title="리테일매출"
@@ -606,7 +609,7 @@ export default function StockView({
           activeYear={activeYear}
         />
         {currentRetail ? (
-          <RetailTable data={currentRetail} estimatedMonths={estimatedMonths} />
+          <RetailTable data={currentRetail} estimatedMonths={estimatedMonths} brand={selectedBrand} />
         ) : (
           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
             {activeYear}년 리테일매출 계산 불가 — 재고잔액 및 입고물량 데이터가 모두 필요합니다
@@ -625,7 +628,7 @@ export default function StockView({
           range={`${activeYear}년 1월 ~ 12월`}
         />
         {currentStock ? (
-          <StockTable data={currentStock} estimatedMonths={stockEstimatedMonths} />
+          <StockTable data={currentStock} estimatedMonths={stockEstimatedMonths} brand={selectedBrand} />
         ) : (
           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
             {activeYear}년 재고잔액 데이터 없음 —&nbsp;
@@ -648,6 +651,7 @@ export default function StockView({
         {currentInbound ? (
           <InboundTable
             data={currentInbound}
+            brand={selectedBrand}
           />
         ) : (
           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
@@ -669,7 +673,7 @@ export default function StockView({
             range="2026년"
           />
           {appOtb2026 ? (
-            <AppOtbTable appOtb={appOtb2026} />
+            <AppOtbTable appOtb={appOtb2026} brand={selectedBrand} />
           ) : (
             <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
               OTB 데이터 없음 —&nbsp;

@@ -11,9 +11,11 @@ const BRAND_DOT: Record<BrandKey, string> = {
 interface Props {
   rates: Record<BrandKey, number>;
   onChange: (rates: Record<BrandKey, number>) => void;
+  brand?: BrandKey;
 }
 
-export default function GrowthRateTable({ rates, onChange }: Props) {
+export default function GrowthRateTable({ rates, onChange, brand }: Props) {
+  const brandList = brand ? [brand] : BRAND_ORDER;
   const handleChange = (brand: BrandKey, value: string) => {
     const num = parseFloat(value);
     if (isNaN(num)) return;
@@ -42,7 +44,7 @@ export default function GrowthRateTable({ rates, onChange }: Props) {
           </tr>
         </thead>
         <tbody>
-          {BRAND_ORDER.map((brand, idx) => {
+          {brandList.map((brand, idx) => {
             const value = rates[brand];
             const isHigh = value >= 200;
             return (

@@ -8,16 +8,16 @@
         "account_nm_en": "Shanghai Lingbo Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 283860,
+            "otb": 284612,
             "cum2025": 10006,
             "cum2026": 127128,
-            "planned": 146726
+            "planned": 147478
           },
           "26F": {
-            "otb": 260000,
+            "otb": 232764,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 260000
+            "planned": 232764
           },
           "27S": {
             "otb": 0,
@@ -44,10 +44,10 @@
             "planned": 41504
           },
           "26F": {
-            "otb": 66000,
+            "otb": 55238,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 66000
+            "planned": 55238
           },
           "27S": {
             "otb": 0,
@@ -74,10 +74,10 @@
             "planned": 37668
           },
           "26F": {
-            "otb": 111000,
+            "otb": 90011,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 111000
+            "planned": 90011
           },
           "27S": {
             "otb": 0,
@@ -98,16 +98,16 @@
         "account_nm_en": "HA＇ERBIN LINJIA",
         "seasons": {
           "26S": {
-            "otb": 140258,
+            "otb": 140702,
             "cum2025": 16371,
             "cum2026": 63226,
-            "planned": 60661
+            "planned": 61105
           },
           "26F": {
-            "otb": 165000,
+            "otb": 150900,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 165000
+            "planned": 150900
           },
           "27S": {
             "otb": 0,
@@ -128,16 +128,16 @@
         "account_nm_en": "XI＇AN NAQIDONGLI",
         "seasons": {
           "26S": {
-            "otb": 40484,
+            "otb": 40592,
             "cum2025": 4593,
             "cum2026": 17302,
-            "planned": 18589
+            "planned": 18697
           },
           "26F": {
-            "otb": 45000,
+            "otb": 40262,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 45000
+            "planned": 40262
           },
           "27S": {
             "otb": 0,
@@ -164,10 +164,10 @@
             "planned": 53459
           },
           "26F": {
-            "otb": 97700,
+            "otb": 98976,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 97700
+            "planned": 98976
           },
           "27S": {
             "otb": 0,
@@ -188,16 +188,46 @@
         "account_nm_en": "SHENYANG GUFUGU",
         "seasons": {
           "26S": {
-            "otb": 86598,
+            "otb": 86664,
             "cum2025": 8122,
             "cum2026": 33582,
-            "planned": 44894
+            "planned": 44960
           },
           "26F": {
-            "otb": 108000,
+            "otb": 84356,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 108000
+            "planned": 84356
+          },
+          "27S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          }
+        }
+      },
+      {
+        "account_id": "D010",
+        "account_nm_en": "Yunnan Oulong Trade Co., Ltd",
+        "seasons": {
+          "26S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "26F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
           },
           "27S": {
             "otb": 0,
@@ -218,16 +248,16 @@
         "account_nm_en": "Chengdu Baokang clothing Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 119763,
+            "otb": 120087,
             "cum2025": 5190,
             "cum2026": 30931,
-            "planned": 83642
+            "planned": 83966
           },
           "26F": {
-            "otb": 115000,
+            "otb": 102568,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 115000
+            "planned": 102568
           },
           "27S": {
             "otb": 0,
@@ -248,16 +278,16 @@
         "account_nm_en": "Hangzhou Yuzhen Commercial Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 203272,
+            "otb": 203460,
             "cum2025": 24805,
             "cum2026": 58785,
-            "planned": 119682
+            "planned": 119870
           },
           "26F": {
-            "otb": 217000,
+            "otb": 179998,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 217000
+            "planned": 179998
           },
           "27S": {
             "otb": 0,
@@ -278,16 +308,16 @@
         "account_nm_en": "Chongqing xuange Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 60244,
+            "otb": 60276,
             "cum2025": 7624,
             "cum2026": 24697,
-            "planned": 27923
+            "planned": 27955
           },
           "26F": {
-            "otb": 60000,
+            "otb": 53070,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 60000
+            "planned": 53070
           },
           "27S": {
             "otb": 0,
@@ -314,10 +344,10 @@
             "planned": 78897
           },
           "26F": {
-            "otb": 67000,
+            "otb": 60055,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 67000
+            "planned": 60055
           },
           "27S": {
             "otb": 0,
@@ -338,16 +368,16 @@
         "account_nm_en": "Xiamen Shiyi Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 60732,
+            "otb": 60860,
             "cum2025": 11703,
             "cum2026": 16024,
-            "planned": 33005
+            "planned": 33133
           },
           "26F": {
-            "otb": 48000,
+            "otb": 41557,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 48000
+            "planned": 41557
           },
           "27S": {
             "otb": 0,
@@ -374,10 +404,10 @@
             "planned": 32846
           },
           "26F": {
-            "otb": 54000,
+            "otb": 50271,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 54000
+            "planned": 50271
           },
           "27S": {
             "otb": 0,
@@ -404,10 +434,10 @@
             "planned": 43467
           },
           "26F": {
-            "otb": 70000,
+            "otb": 59705,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 70000
+            "planned": 59705
           },
           "27S": {
             "otb": 0,
@@ -434,10 +464,10 @@
             "planned": 10441
           },
           "26F": {
-            "otb": 34000,
+            "otb": 29034,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 34000
+            "planned": 29034
           },
           "27S": {
             "otb": 0,
@@ -458,16 +488,16 @@
         "account_nm_en": "SHENYANG RUIYUANHE",
         "seasons": {
           "26S": {
-            "otb": 52654,
+            "otb": 52692,
             "cum2025": 1981,
             "cum2026": 33233,
-            "planned": 17440
+            "planned": 17478
           },
           "26F": {
-            "otb": 61000,
+            "otb": 48642,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 61000
+            "planned": 48642
           },
           "27S": {
             "otb": 0,
@@ -494,10 +524,10 @@
             "planned": 20637
           },
           "26F": {
-            "otb": 66000,
+            "otb": 61731,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 66000
+            "planned": 61731
           },
           "27S": {
             "otb": 0,
@@ -518,16 +548,16 @@
         "account_nm_en": "Shenzhen puluoshi Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 63808,
+            "otb": 63874,
             "cum2025": 7198,
             "cum2026": 16611,
-            "planned": 39999
+            "planned": 40065
           },
           "26F": {
-            "otb": 52000,
+            "otb": 46584,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 52000
+            "planned": 46584
           },
           "27S": {
             "otb": 0,
@@ -548,16 +578,16 @@
         "account_nm_en": "Ivy (Guangzhou) Investment Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 123010,
+            "otb": 123346,
             "cum2025": 1241,
             "cum2026": 54132,
-            "planned": 67637
+            "planned": 67973
           },
           "26F": {
-            "otb": 119000,
+            "otb": 95667,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 119000
+            "planned": 95667
           },
           "27S": {
             "otb": 0,
@@ -578,16 +608,16 @@
         "account_nm_en": "Xiamen Bailun Clothing Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 38945,
+            "otb": 39207,
             "cum2025": 8841,
             "cum2026": 18429,
-            "planned": 11675
+            "planned": 11937
           },
           "26F": {
-            "otb": 37000,
+            "otb": 30248,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 37000
+            "planned": 30248
           },
           "27S": {
             "otb": 0,
@@ -608,16 +638,46 @@
         "account_nm_en": "BEIJING JIASHANG",
         "seasons": {
           "26S": {
-            "otb": 54748,
+            "otb": 54879,
             "cum2025": 11034,
             "cum2026": 27292,
-            "planned": 16422
+            "planned": 16553
           },
           "26F": {
-            "otb": 67000,
+            "otb": 54321,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 67000
+            "planned": 54321
+          },
+          "27S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          }
+        }
+      },
+      {
+        "account_id": "D030",
+        "account_nm_en": "XI＇AN MEISHANG",
+        "seasons": {
+          "26S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "26F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
           },
           "27S": {
             "otb": 0,
@@ -644,10 +704,10 @@
             "planned": 9046
           },
           "26F": {
-            "otb": 15000,
+            "otb": 17288,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 15000
+            "planned": 17288
           },
           "27S": {
             "otb": 0,
@@ -674,10 +734,10 @@
             "planned": 15883
           },
           "26F": {
-            "otb": 44000,
+            "otb": 34968,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 44000
+            "planned": 34968
           },
           "27S": {
             "otb": 0,
@@ -704,10 +764,10 @@
             "planned": 5454
           },
           "26F": {
-            "otb": 7600,
+            "otb": 8846,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 7600
+            "planned": 8846
           },
           "27S": {
             "otb": 0,
@@ -734,10 +794,40 @@
             "planned": 73415
           },
           "26F": {
-            "otb": 151500,
+            "otb": 133503,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 151500
+            "planned": 133503
+          },
+          "27S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          }
+        }
+      },
+      {
+        "account_id": "D044",
+        "account_nm_en": "BJ BoRun",
+        "seasons": {
+          "26S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "26F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
           },
           "27S": {
             "otb": 0,
@@ -764,10 +854,10 @@
             "planned": 9396
           },
           "26F": {
-            "otb": 29000,
+            "otb": 23507,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 29000
+            "planned": 23507
           },
           "27S": {
             "otb": 0,
@@ -794,10 +884,10 @@
             "planned": 25682
           },
           "26F": {
-            "otb": 63000,
+            "otb": 50531,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 63000
+            "planned": 50531
           },
           "27S": {
             "otb": 0,
@@ -818,16 +908,16 @@
         "account_nm_en": "Changsha poyun Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 68018,
+            "otb": 68037,
             "cum2025": 5297,
             "cum2026": 21368,
-            "planned": 41353
+            "planned": 41372
           },
           "26F": {
-            "otb": 75000,
+            "otb": 61106,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 75000
+            "planned": 61106
           },
           "27S": {
             "otb": 0,
@@ -854,10 +944,40 @@
             "planned": 36265
           },
           "26F": {
-            "otb": 63000,
+            "otb": 50121,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 63000
+            "planned": 50121
+          },
+          "27S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          }
+        }
+      },
+      {
+        "account_id": "D050",
+        "account_nm_en": "QINGDAO XINHANGXING",
+        "seasons": {
+          "26S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "26F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
           },
           "27S": {
             "otb": 0,
@@ -884,10 +1004,10 @@
             "planned": 34761
           },
           "26F": {
-            "otb": 52100,
+            "otb": 45386,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 52100
+            "planned": 45386
           },
           "27S": {
             "otb": 0,
@@ -914,10 +1034,10 @@
             "planned": 24991
           },
           "26F": {
-            "otb": 43000,
+            "otb": 39798,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 43000
+            "planned": 39798
           },
           "27S": {
             "otb": 0,
@@ -944,10 +1064,10 @@
             "planned": 11456
           },
           "26F": {
-            "otb": 16200,
+            "otb": 18826,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 16200
+            "planned": 18826
           },
           "27S": {
             "otb": 0,
@@ -974,10 +1094,10 @@
             "planned": 9182
           },
           "26F": {
-            "otb": 60000,
+            "otb": 49116,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 60000
+            "planned": 49116
           },
           "27S": {
             "otb": 0,
@@ -998,16 +1118,16 @@
         "account_nm_en": "SHANDONGDEJUNFENG",
         "seasons": {
           "26S": {
-            "otb": 107033,
+            "otb": 107317,
             "cum2025": 12454,
             "cum2026": 43367,
-            "planned": 51212
+            "planned": 51496
           },
           "26F": {
-            "otb": 113000,
+            "otb": 93627,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 113000
+            "planned": 93627
           },
           "27S": {
             "otb": 0,
@@ -1030,10 +1150,10 @@
         "account_nm_en": "Shanghai Lingbo Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3609,
+            "otb": 3706,
             "cum2025": 595,
             "cum2026": 1790,
-            "planned": 1224
+            "planned": 1321
           },
           "26F": {
             "otb": 3818,
@@ -1060,10 +1180,10 @@
         "account_nm_en": "HENAN JINANXIN",
         "seasons": {
           "26S": {
-            "otb": 3004,
+            "otb": 3100,
             "cum2025": 96,
             "cum2026": 1311,
-            "planned": 1597
+            "planned": 1693
           },
           "26F": {
             "otb": 2344,
@@ -1090,10 +1210,10 @@
         "account_nm_en": "Yifan (Shanghai) Brand Management Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3549,
+            "otb": 3665,
             "cum2025": 548,
             "cum2026": 1722,
-            "planned": 1279
+            "planned": 1395
           },
           "26F": {
             "otb": 3792,
@@ -1120,10 +1240,10 @@
         "account_nm_en": "HA＇ERBIN LINJIA",
         "seasons": {
           "26S": {
-            "otb": 14909,
+            "otb": 15200,
             "cum2025": 1973,
             "cum2026": 6262,
-            "planned": 6674
+            "planned": 6965
           },
           "26F": {
             "otb": 11003,
@@ -1150,10 +1270,10 @@
         "account_nm_en": "XI＇AN NAQIDONGLI",
         "seasons": {
           "26S": {
-            "otb": 2330,
+            "otb": 2383,
             "cum2025": 299,
             "cum2026": 600,
-            "planned": 1431
+            "planned": 1484
           },
           "26F": {
             "otb": 1591,
@@ -1180,10 +1300,10 @@
         "account_nm_en": "BeiJing JingRui Trade & Development Co.,Ltd",
         "seasons": {
           "26S": {
-            "otb": 365,
+            "otb": 476,
             "cum2025": 18,
             "cum2026": 0,
-            "planned": 347
+            "planned": 458
           },
           "26F": {
             "otb": 539,
@@ -1210,10 +1330,10 @@
         "account_nm_en": "SHENYANG GUFUGU",
         "seasons": {
           "26S": {
-            "otb": 4114,
+            "otb": 4271,
             "cum2025": 636,
             "cum2026": 1500,
-            "planned": 1978
+            "planned": 2135
           },
           "26F": {
             "otb": 3051,
@@ -1236,14 +1356,44 @@
         }
       },
       {
+        "account_id": "D010",
+        "account_nm_en": "Yunnan Oulong Trade Co., Ltd",
+        "seasons": {
+          "26S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "26F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27S": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          },
+          "27F": {
+            "otb": 0,
+            "cum2025": 0,
+            "cum2026": 0,
+            "planned": 0
+          }
+        }
+      },
+      {
         "account_id": "D011",
         "account_nm_en": "Chengdu Baokang clothing Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3572,
+            "otb": 3666,
             "cum2025": 803,
             "cum2026": 958,
-            "planned": 1811
+            "planned": 1905
           },
           "26F": {
             "otb": 2595,
@@ -1270,10 +1420,10 @@
         "account_nm_en": "Hangzhou Yuzhen Commercial Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 6061,
+            "otb": 6216,
             "cum2025": 1014,
             "cum2026": 2666,
-            "planned": 2381
+            "planned": 2536
           },
           "26F": {
             "otb": 6231,
@@ -1300,10 +1450,10 @@
         "account_nm_en": "Chongqing xuange Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3100,
+            "otb": 3127,
             "cum2025": 524,
             "cum2026": 1542,
-            "planned": 1034
+            "planned": 1061
           },
           "26F": {
             "otb": 2629,
@@ -1330,10 +1480,10 @@
         "account_nm_en": "WUHAN MODING",
         "seasons": {
           "26S": {
-            "otb": 4241,
+            "otb": 4322,
             "cum2025": 0,
             "cum2026": 196,
-            "planned": 4045
+            "planned": 4126
           },
           "26F": {
             "otb": 2039,
@@ -1360,10 +1510,10 @@
         "account_nm_en": "Xiamen Shiyi Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 5432,
+            "otb": 5683,
             "cum2025": 1131,
             "cum2026": 2018,
-            "planned": 2283
+            "planned": 2534
           },
           "26F": {
             "otb": 3992,
@@ -1390,10 +1540,10 @@
         "account_nm_en": "Jiangxi chaomingchao Trade Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 1156,
+            "otb": 1192,
             "cum2025": 41,
             "cum2026": 323,
-            "planned": 792
+            "planned": 828
           },
           "26F": {
             "otb": 700,
@@ -1420,10 +1570,10 @@
         "account_nm_en": "SHANXI LINGHAO",
         "seasons": {
           "26S": {
-            "otb": 3240,
+            "otb": 3325,
             "cum2025": 534,
             "cum2026": 892,
-            "planned": 1814
+            "planned": 1899
           },
           "26F": {
             "otb": 2064,
@@ -1450,10 +1600,10 @@
         "account_nm_en": "SHENYANG RUIYUANHE",
         "seasons": {
           "26S": {
-            "otb": 2933,
+            "otb": 3056,
             "cum2025": 479,
             "cum2026": 1133,
-            "planned": 1321
+            "planned": 1444
           },
           "26F": {
             "otb": 2520,
@@ -1480,10 +1630,10 @@
         "account_nm_en": "HUACHUYITONG BEIJING",
         "seasons": {
           "26S": {
-            "otb": 2869,
+            "otb": 2950,
             "cum2025": 685,
             "cum2026": 1303,
-            "planned": 881
+            "planned": 962
           },
           "26F": {
             "otb": 4020,
@@ -1510,10 +1660,10 @@
         "account_nm_en": "Ivy (Guangzhou) Investment Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3035,
+            "otb": 3265,
             "cum2025": 616,
             "cum2026": 1038,
-            "planned": 1381
+            "planned": 1611
           },
           "26F": {
             "otb": 2331,
@@ -1540,10 +1690,10 @@
         "account_nm_en": "Xiamen Bailun Clothing Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 677,
+            "otb": 702,
             "cum2025": 163,
             "cum2026": 288,
-            "planned": 226
+            "planned": 251
           },
           "26F": {
             "otb": 9699,
@@ -1570,10 +1720,10 @@
         "account_nm_en": "Shenzhen Youying Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 1661,
+            "otb": 1682,
             "cum2025": 283,
             "cum2026": 940,
-            "planned": 438
+            "planned": 459
           },
           "26F": {
             "otb": 1387,
@@ -1630,10 +1780,10 @@
         "account_nm_en": "BEIJNG LANMENGYUQI",
         "seasons": {
           "26S": {
-            "otb": 4460,
+            "otb": 4437,
             "cum2025": 281,
             "cum2026": 1412,
-            "planned": 2767
+            "planned": 2744
           },
           "26F": {
             "otb": 1020,
@@ -1660,10 +1810,10 @@
         "account_nm_en": "Changsha poyun Trading Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 1791,
+            "otb": 1838,
             "cum2025": 289,
             "cum2026": 568,
-            "planned": 934
+            "planned": 981
           },
           "26F": {
             "otb": 1146,
@@ -1690,10 +1840,10 @@
         "account_nm_en": "QINGDAO XINHANGXING",
         "seasons": {
           "26S": {
-            "otb": 5685,
+            "otb": 5848,
             "cum2025": 0,
             "cum2026": 0,
-            "planned": 5685
+            "planned": 5848
           },
           "26F": {
             "otb": 0,
@@ -1720,10 +1870,10 @@
         "account_nm_en": "SuHao",
         "seasons": {
           "26S": {
-            "otb": 5099,
+            "otb": 5129,
             "cum2025": 158,
             "cum2026": 310,
-            "planned": 4631
+            "planned": 4661
           },
           "26F": {
             "otb": 5260,
@@ -1750,10 +1900,10 @@
         "account_nm_en": "NANNING FEINUO",
         "seasons": {
           "26S": {
-            "otb": 1048,
+            "otb": 1066,
             "cum2025": 161,
             "cum2026": 399,
-            "planned": 488
+            "planned": 506
           },
           "26F": {
             "otb": 526,
@@ -1810,10 +1960,10 @@
         "account_nm_en": "Yunnan HengPan Trade Co., Ltd",
         "seasons": {
           "26S": {
-            "otb": 3529,
+            "otb": 3719,
             "cum2025": 1038,
             "cum2026": 1784,
-            "planned": 707
+            "planned": 897
           },
           "26F": {
             "otb": 3129,

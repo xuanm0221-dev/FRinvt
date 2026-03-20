@@ -14,6 +14,60 @@ function loadJson<T>(filename: string): T | null {
   }
 }
 
+function loadAccountNameMap(): Record<string, { account_nm_en: string; account_nm_kr: string }> {
+  const candidates = [
+    path.join(process.cwd(), "fr_master.csv"),
+    path.join(process.cwd(), "..", "fr_master.csv"),
+    path.join(process.cwd(), "..", "..", "fr_master.csv"),
+  ];
+  let raw: string | null = null;
+  for (const p of candidates) {
+    try {
+      raw = fs.readFileSync(p, "utf-8");
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!raw) return {};
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return {};
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const idIdx = headers.indexOf("account_id");
+  const enIdx = headers.indexOf("account_nm_en");
+  const krIdx = headers.indexOf("account_nm_kr");
+  if (idIdx < 0 || enIdx < 0 || krIdx < 0) return {};
+  const result: Record<string, { account_nm_en: string; account_nm_kr: string }> = {};
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvRow(lines[i]);
+    const id = row[idIdx]?.trim();
+    const en = row[enIdx]?.trim() ?? "";
+    const kr = row[krIdx]?.trim() ?? "";
+    if (id && (en || kr)) result[id] = { account_nm_en: en, account_nm_kr: kr };
+  }
+  return result;
+}
+
+function parseCsvRow(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      inQuote = !inQuote;
+    } else if ((c === "," && !inQuote) || c === "\n" || c === "\r") {
+      out.push(cur);
+      cur = "";
+      if (c !== ",") break;
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
 /** 2026 기초재고 = 2025년 12월 재고잔액 (stock_2025.json에서 파생) */
 function inject2026BaseStock(data2026: StockData, data2025: StockData): StockData {
   for (const brand of BRAND_ORDER) {
@@ -35,6 +89,7 @@ export default async function Home() {
   const inbound2026 = loadJson<InboundData>("inbound_2026.json");
   const retail2026 = loadJson<RetailData>("retail_2026.json");
   const appOtb2026 = loadJson<AppOtbData>("app_otb_2026.json");
+  const accountNameMap = loadAccountNameMap();
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
@@ -47,6 +102,7 @@ export default async function Home() {
             inbound2026={inbound2026}
             retail2026={retail2026}
             appOtb2026={appOtb2026}
+            accountNameMap={accountNameMap}
           />
         </Suspense>
       </main>

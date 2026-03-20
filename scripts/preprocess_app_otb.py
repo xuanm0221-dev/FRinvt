@@ -152,13 +152,12 @@ def fetch_account_names(conn) -> dict:
 
 # ─── CSV 읽기 ────────────────────────────────────
 def load_otb_csv() -> pd.DataFrame:
-    """OTB_K.csv 읽기. 컬럼: brd_cd, sesn, account_id, [중국어명], Amount"""
-    df = pd.read_csv(
-        CSV_PATH,
-        header=0,
-        names=["brd_cd", "sesn", "account_id", "name_cn", "amount"],
-        dtype=str,
-    )
+    """OTB_K.csv 읽기. 헤더: brd_cd, sesn, account_id, 대리상명칭(중국어), amount"""
+    df = pd.read_csv(CSV_PATH, header=0, dtype=str)
+    df.columns = df.columns.str.strip()
+    # amount 컬럼 없으면 에러 (헤더명 확인)
+    if "amount" not in df.columns:
+        raise ValueError(f"CSV에 amount 컬럼이 없습니다. 컬럼: {list(df.columns)}")
     # Amount 정제: 쉼표·공백·따옴표 제거 → 숫자
     df["amount"] = (
         df["amount"]
