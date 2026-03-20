@@ -9,9 +9,11 @@ import {
   InboundData,
   AppOtbData,
   MONTHS,
+  CategoryGroup,
 } from "./types";
 
 const OTB_SEASONS = new Set(["26S", "26F", "27S", "27F"]);
+const OTB_SEASONS_ARR = ["26S", "26F", "27S", "27F"] as const;
 export const ACC_ORDER = ["신발", "모자", "가방", "기타"] as const;
 export const DEFAULT_TARGET_WEEKS: Record<string, number> = {
   신발: 30,
@@ -127,12 +129,14 @@ export function mergeAccounts(
   brand: BrandKey,
   stock: StockData | null,
   retail: RetailData | null,
-  inbound: InboundData | null
+  inbound: InboundData | null,
+  appOtb: AppOtbData | null = null
 ): AccountRow[] {
   const accIds = new Set<string>();
   (stock?.brands[brand] ?? []).forEach((a) => accIds.add(a.account_id));
   (retail?.brands[brand] ?? []).forEach((a) => accIds.add(a.account_id));
   (inbound?.brands[brand] ?? []).forEach((a) => accIds.add(a.account_id));
+  (appOtb?.brands[brand] ?? []).forEach((a) => accIds.add(a.account_id));
 
   const stockMap = new Map((stock?.brands[brand] ?? []).map((a) => [a.account_id, a]));
   const retailMap = new Map((retail?.brands[brand] ?? []).map((a) => [a.account_id, a]));
@@ -144,16 +148,37 @@ export function mergeAccounts(
       const s = stockMap.get(id);
       if (s) return s;
       const r = retailMap.get(id) ?? inboundMap.get(id);
-      if (!r) return null;
-      return {
-        account_id: r.account_id,
-        account_nm_en: r.account_nm_en ?? "",
-        base_stock: 0,
-        months: {} as Record<number, number>,
-        categories: r.categories ?? [],
-      } as AccountRow;
+      if (r)
+        return {
+          account_id: r.account_id,
+          account_nm_en: r.account_nm_en ?? "",
+          base_stock: 0,
+          months: {} as Record<number, number>,
+          categories: r.categories ?? [],
+        } as AccountRow;
+      const o = appOtb?.brands[brand]?.find((a) => a.account_id === id);
+      if (o)
+        return {
+          account_id: o.account_id,
+          account_nm_en: o.account_nm_en ?? "",
+          base_stock: 0,
+          months: {} as Record<number, number>,
+          categories: [],
+        } as AccountRow;
+      return null;
     })
     .filter((a): a is AccountRow => a !== null);
+}
+
+function addSeasonsFromAccounts(seasonSet: Set<string>, accs: readonly { categories?: CategoryGroup[] }[]) {
+  for (const acc of accs) {
+    for (const cat of acc.categories ?? []) {
+      if (cat.대분류 !== "의류") continue;
+      for (const sub of cat.subcategories ?? []) {
+        if (sub.중분류 && sub.중분류 !== "과시즌") seasonSet.add(sub.중분류);
+      }
+    }
+  }
 }
 
 export function buildRows(
@@ -162,7 +187,9 @@ export function buildRows(
   stockPrev: StockData | null,
   retail: RetailData | null,
   selectedAccId: string,
-  allAccsOverride?: AccountRow[]
+  allAccsOverride?: AccountRow[],
+  inbound?: InboundData | null,
+  appOtb?: AppOtbData | null
 ): InventoryRows {
   const empty: RowData = { base: 0, sales: 0 };
   const allAccs = allAccsOverride ?? (stock?.brands[brand] ?? []);
@@ -178,15 +205,16 @@ export function buildRows(
 
   const prevAccs = stockPrev?.brands[brand] ?? [];
   const retailAccs = retail?.brands[brand] ?? [];
+  const stockAccs = stock?.brands[brand] ?? [];
+  const inboundAccs = inbound?.brands[brand] ?? [];
 
   const seasonSet = new Set<string>();
-  for (const acc of filteredAccs) {
-    for (const cat of acc.categories ?? []) {
-      if (cat.대분류 !== "의류") continue;
-      for (const sub of cat.subcategories) {
-        if (sub.중분류 !== "과시즌") seasonSet.add(sub.중분류);
-      }
-    }
+  addSeasonsFromAccounts(seasonSet, filteredAccs);
+  addSeasonsFromAccounts(seasonSet, retailAccs);
+  addSeasonsFromAccounts(seasonSet, stockAccs);
+  addSeasonsFromAccounts(seasonSet, inboundAccs);
+  if (is2026 && appOtb) {
+    for (const s of OTB_SEASONS_ARR) seasonSet.add(s);
   }
 
   const yy = parseInt(stockYear.slice(2));
@@ -373,8 +401,8 @@ export function computeAccountMetrics(
   targetWeeks: Record<string, number> = DEFAULT_TARGET_WEEKS,
   sellThroughPct: number = 70
 ): DealerAccountMetrics {
-  const merged = mergeAccounts(brand, stock, retail, inbound);
-  const rows = buildRows(brand, stock, stockPrev, retail, acc.account_id, merged);
+  const merged = mergeAccounts(brand, stock, retail, inbound, appOtb);
+  const rows = buildRows(brand, stock, stockPrev, retail, acc.account_id, merged, inbound, appOtb);
   const is2026 = year === "2026";
   const canCalcOtb = appOtb && is2026;
   const useInbound = inbound && !is2026;
@@ -385,22 +413,22 @@ export function computeAccountMetrics(
     if (!canCalcOtb || !OTB_SEASONS.has(sesn) || !otbAcc) return 0;
     return (otbAcc.seasons[sesn]?.otb ?? 0) * 1000;
   }
-  function sesPurchase(season: string, base: number): number {
+  function getCum2025(sesn: string): number {
+    if (!canCalcOtb || !OTB_SEASONS.has(sesn) || !otbAcc) return 0;
+    return (otbAcc.seasons[sesn]?.cum2025 ?? 0) * 1000;
+  }
+  /** 의류 매입 = OTB - 25년 누적입고 */
+  function sesPurchase(season: string): number {
     if (!OTB_SEASONS.has(season)) return 0;
-    return getOtb(season) - base;
+    return getOtb(season) - getCum2025(season);
   }
 
   let apparelPurchase = 0;
   if (useInbound) {
     apparelPurchase = sumInboundForAccount(inbound!, brand, acc.account_id, "의류", null);
   } else if (canCalcOtb) {
-    for (const { season, data } of rows.apparelCurrent) {
-      apparelPurchase += sesPurchase(season, data.base);
-    }
-    for (const grp of rows.apparelYearGroups) {
-      for (const { season, data } of grp.seasons) {
-        apparelPurchase += sesPurchase(season, data.base);
-      }
+    for (const sesn of OTB_SEASONS_ARR) {
+      apparelPurchase += sesPurchase(sesn);
     }
   }
 
@@ -414,7 +442,7 @@ export function computeAccountMetrics(
   const prevMerged = hasPrev ? mergeAccounts(brand, stockPrev, retailPrev, inboundPrev) : [];
   const prevRows =
     hasPrev && retailPrev
-      ? buildRows(brand, stockPrev, null, retailPrev, acc.account_id, prevMerged)
+      ? buildRows(brand, stockPrev, null, retailPrev, acc.account_id, prevMerged, inboundPrev, null)
       : null;
 
   let prevApparelBase = 0;
@@ -510,7 +538,7 @@ export function computeAccountMetrics(
     base + purch > 0 ? (sales / (base + purch)) * 100 : null;
 
   for (const { season, data } of rows.apparelCurrent) {
-    const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
+    const p = canCalcOtb ? sesPurchase(season) : 0;
     const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
     const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
     const ending = data.base + purch - sales;
@@ -532,7 +560,7 @@ export function computeAccountMetrics(
     let grpPurchase = 0;
     const seasons: ApparelSeasonDetail[] = [];
     for (const { season, data } of grp.seasons) {
-      const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
+      const p = canCalcOtb ? sesPurchase(season) : 0;
       const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
       grpPurchase += purch;
       const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;

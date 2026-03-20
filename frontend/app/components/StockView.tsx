@@ -279,139 +279,6 @@ function brandStock12(data: StockData | null): Record<string, number> {
 }
 
 
-// ─── 2026년 재고잔액 계획월 계산 ────────────────
-// 실적월은 data2026 그대로, 계획월은 전월재고 + 입고물량 − 리테일매출
-// 대분류/중분류 레벨까지 재귀 계산, 26F/27S 행 자동 주입
-function blendStock2026(
-  data2026: StockData | null,
-  blendedInbound: InboundData | null,
-  blendedRetail: RetailData | null
-): { data: StockData; estimatedMonths: number[] } | null {
-  if (!data2026) return null;
-
-  // 실적 완료 월: data2026에 데이터가 있는 월
-  const completedMonths = new Set<number>();
-  for (const brand of BRAND_ORDER) {
-    for (const acc of data2026.brands[brand] ?? []) {
-      for (const m of MONTHS) {
-        if (m in acc.months) completedMonths.add(m);
-      }
-    }
-  }
-  const estimatedMonths = MONTHS.filter((m) => !completedMonths.has(m));
-  if (estimatedMonths.length === 0) return { data: data2026, estimatedMonths: [] };
-
-  const brands: Record<string, AccountRow[]> = {};
-
-  for (const brand of BRAND_ORDER as BrandKey[]) {
-    const accs26 = data2026.brands[brand] ?? [];
-    const inboundAccs = blendedInbound?.brands[brand] ?? [];
-    const retailAccs = blendedRetail?.brands[brand] ?? [];
-
-    const inboundByAcc = new Map(inboundAccs.map((a) => [a.account_id, a]));
-    const retailByAcc = new Map(retailAccs.map((a) => [a.account_id, a]));
-
-    const rows: AccountRow[] = accs26.map((acc26) => {
-      const inboundAcc = inboundByAcc.get(acc26.account_id);
-      const retailAcc = retailByAcc.get(acc26.account_id);
-
-      // ── 대분류/중분류 레벨 계산 ──
-      const blendedCategories: CategoryGroup[] | undefined = acc26.categories
-        ? (() => {
-            const catMap26 = new Map(acc26.categories!.map((c) => [c.대분류, c]));
-            const catMapInb = new Map(inboundAcc?.categories?.map((c) => [c.대분류, c]) ?? []);
-            const catMapRet = new Map(retailAcc?.categories?.map((c) => [c.대분류, c]) ?? []);
-
-            // 대분류 합집합 (의류/ACC + inbound/retail에만 있는 대분류)
-            const allCatKeys = new Set([
-              ...Array.from(catMap26.keys()),
-              ...Array.from(catMapInb.keys()),
-              ...Array.from(catMapRet.keys()),
-            ]);
-
-            return Array.from(allCatKeys).map((대분류) => {
-              const cat26 = catMap26.get(대분류);
-              const catInb = catMapInb.get(대분류);
-              const catRet = catMapRet.get(대분류);
-
-              // 중분류 합집합 — data2026 순서 우선, 없는 것(26F/27S 등)은 뒤에 추가 후 정렬
-              const subKeysOrdered: string[] = cat26?.subcategories.map((s) => s.중분류) ?? [];
-              const subKeySet = new Set(subKeysOrdered);
-              for (const s of catInb?.subcategories ?? []) {
-                if (!subKeySet.has(s.중분류)) { subKeysOrdered.push(s.중분류); subKeySet.add(s.중분류); }
-              }
-              for (const s of catRet?.subcategories ?? []) {
-                if (!subKeySet.has(s.중분류)) { subKeysOrdered.push(s.중분류); subKeySet.add(s.중분류); }
-              }
-              // 시즌 기준 정렬 (의류: 26F>26S>25S>과시즌, ACC: NaN이므로 원래 순서 유지)
-              subKeysOrdered.sort(cmpSesn);
-
-              const subMap26 = new Map(cat26?.subcategories.map((s) => [s.중분류, s]) ?? []);
-              const subMapInb = new Map(catInb?.subcategories.map((s) => [s.중분류, s]) ?? []);
-              const subMapRet = new Map(catRet?.subcategories.map((s) => [s.중분류, s]) ?? []);
-
-              const subcategories: SubCategoryRow[] = subKeysOrdered.map((중분류) => {
-                const sub26 = subMap26.get(중분류);
-                const subInb = subMapInb.get(중분류);
-                const subRet = subMapRet.get(중분류);
-                const base_stock = sub26?.base_stock ?? 0;
-                const subMonths: Record<number, number> = {};
-
-                for (const m of MONTHS) {
-                  if (completedMonths.has(m)) {
-                    // 실적월: data2026 값 (없는 중분류는 0)
-                    subMonths[m] = sub26?.months[m] ?? 0;
-                  } else {
-                    // 계획월: 전월잔액 + 입고 − 리테일
-                    const prevStock = m === 1 ? base_stock : (subMonths[m - 1] ?? 0);
-                    const inbound = subInb?.months[m] ?? 0;
-                    const retail = subRet?.months[m] ?? 0;
-                    subMonths[m] = Math.max(0, prevStock + inbound - retail);
-                  }
-                }
-
-                return { 중분류, base_stock, months: subMonths };
-              });
-
-              // 대분류 합계 = 중분류 합산
-              const catBase = subcategories.reduce((s, sub) => s + (sub.base_stock ?? 0), 0);
-              const catMonths: Record<number, number> = {};
-              for (const m of MONTHS) {
-                catMonths[m] = subcategories.reduce((s, sub) => s + (sub.months[m] ?? 0), 0);
-              }
-
-              return { 대분류, base_stock: catBase, months: catMonths, subcategories };
-            });
-          })()
-        : undefined;
-
-      // ── 대리상 레벨 계산 ──
-      const months: Record<number, number> = {};
-      for (const m of MONTHS) {
-        if (completedMonths.has(m)) {
-          months[m] = acc26.months[m] ?? 0;
-        } else {
-          const prevStock = m === 1 ? (acc26.base_stock ?? 0) : (months[m - 1] ?? 0);
-          const inbound = inboundAcc?.months[m] ?? 0;
-          const retail = retailAcc?.months[m] ?? 0;
-          months[m] = Math.max(0, prevStock + inbound - retail);
-        }
-      }
-
-      return {
-        account_id: acc26.account_id,
-        account_nm_en: acc26.account_nm_en,
-        base_stock: acc26.base_stock,
-        months,
-        categories: blendedCategories,
-      };
-    });
-
-    brands[brand] = rows;
-  }
-
-  return { data: { year: "2026", brands }, estimatedMonths };
-}
 
 // ─── 섹션 헤더 컴포넌트들 ─────────────────────
 function SectionHeader({
@@ -525,16 +392,8 @@ export default function StockView({
 
   const estimatedMonths = blended?.estimatedMonths ?? [];
 
-  // 2026년 재고잔액 계획월 계산 (memoized)
-  const blendedStock = useMemo(
-    () =>
-      activeYear === "2026"
-        ? blendStock2026(data2026, currentInbound, currentRetail)
-        : null,
-    [activeYear, data2026, currentInbound, currentRetail]
-  );
-  const currentStock = activeYear === "2025" ? data2025 : (blendedStock?.data ?? data2026);
-  const stockEstimatedMonths = blendedStock?.estimatedMonths ?? [];
+  const currentStock = activeYear === "2025" ? data2025 : data2026;
+  const stockEstimatedMonths: number[] = [];
 
 
   return (
@@ -590,7 +449,7 @@ export default function StockView({
           stock2025={data2025}
           retail2025={retail2025calc}
           inbound2025={inbound2025}
-          stock2026={blendedStock?.data ?? data2026}
+          stock2026={data2026}
           retail2026={blended?.data ?? retail2026}
           inbound2026={inbound2026}
           growthRate={growthRates[selectedBrand]}
