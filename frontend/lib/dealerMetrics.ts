@@ -48,6 +48,9 @@ export interface ApparelSeasonDetail {
   sales: number;
   ending: number;
   sellThrough: number | null;
+  purchaseYoy?: number | null;
+  salesYoy?: number | null;
+  endingYoy?: number | null;
 }
 
 export interface AccItemDetail {
@@ -57,11 +60,23 @@ export interface AccItemDetail {
   sales: number;
   ending: number;
   weeks: number | null;
+  purchaseYoy?: number | null;
+  salesYoy?: number | null;
+  endingYoy?: number | null;
 }
 
 export interface ApparelYearGroupDetail {
   label: string;
-  data: { base: number; purchase: number; sales: number; ending: number; sellThrough: number | null };
+  data: {
+    base: number;
+    purchase: number;
+    sales: number;
+    ending: number;
+    sellThrough: number | null;
+    purchaseYoy?: number | null;
+    salesYoy?: number | null;
+    endingYoy?: number | null;
+  };
   seasons: ApparelSeasonDetail[];
 }
 
@@ -309,6 +324,14 @@ export function buildRows(
   };
 }
 
+/** 의류 시즌 YOY 매칭: 27S→26S, 25F→24F (동일 시즌코드, 연도 -1) */
+export function prevSeason(season: string): string {
+  if (season === "과시즌") return "과시즌";
+  const yy = parseInt(season.slice(0, 2));
+  if (isNaN(yy)) return season;
+  return `${(yy - 1).toString().padStart(2, "0")}${season.slice(2)}`;
+}
+
 function sumInboundForAccount(
   inbound: InboundData,
   brand: BrandKey,
@@ -387,105 +410,6 @@ export function computeAccountMetrics(
     : rows.apparel.sales;
   const apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
 
-  const apparelCurrent: ApparelSeasonDetail[] = [];
-  const calcSellThrough = (base: number, purch: number, sales: number) =>
-    base + purch > 0 ? (sales / (base + purch)) * 100 : null;
-
-  for (const { season, data } of rows.apparelCurrent) {
-    const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
-    const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
-    const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
-    const ending = data.base + purch - sales;
-    apparelCurrent.push({
-      label: season,
-      base: data.base,
-      purchase: purch,
-      sales,
-      ending,
-      sellThrough: calcSellThrough(data.base, purch, sales),
-    });
-  }
-  const apparelYearGroups: ApparelYearGroupDetail[] = [];
-  for (const grp of rows.apparelYearGroups) {
-    let grpPurchase = 0;
-    const seasons: ApparelSeasonDetail[] = [];
-    for (const { season, data } of grp.seasons) {
-      const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
-      const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
-      grpPurchase += purch;
-      const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
-      const ending = data.base + purch - sales;
-      seasons.push({
-        label: season,
-        base: data.base,
-        purchase: purch,
-        sales,
-        ending,
-        sellThrough: calcSellThrough(data.base, purch, sales),
-      });
-    }
-    const grpSales = useApparelFormula ? Math.round((grp.data.base + grpPurchase) * (sellThroughPct / 100)) : grp.data.sales;
-    const grpEnding = grp.data.base + grpPurchase - grpSales;
-    apparelYearGroups.push({
-      label: grp.label,
-      data: {
-        base: grp.data.base,
-        purchase: grpPurchase,
-        sales: grpSales,
-        ending: grpEnding,
-        sellThrough: calcSellThrough(grp.data.base, grpPurchase, grpSales),
-      },
-      seasons,
-    });
-  }
-  let apparelOld: ApparelSeasonDetail | null = null;
-  if (rows.apparelOld) {
-    const oldPurch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", "과시즌") : 0;
-    const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (sellThroughPct / 100)) : rows.apparelOld.sales;
-    const ending = rows.apparelOld.base + oldPurch - oldSales;
-    apparelOld = {
-      label: "과시즌",
-      base: rows.apparelOld.base,
-      purchase: oldPurch,
-      sales: oldSales,
-      ending,
-      sellThrough: calcSellThrough(rows.apparelOld.base, oldPurch, oldSales),
-    };
-  }
-
-  const accItemsDetail: AccItemDetail[] = [];
-  let accEnding = 0;
-  let accPurchase = 0;
-  for (const { item, data } of rows.accItems) {
-    const weeklySales = (data.sales / 365) * 7;
-    const targetW = targetWeeks[item] ?? DEFAULT_TARGET_WEEKS[item];
-    let ending: number;
-    let purch: number;
-    if (useInbound) {
-      purch = sumInboundForAccount(inbound!, brand, acc.account_id, "ACC", item);
-      ending = data.base + purch - data.sales;
-    } else {
-      ending = weeklySales > 0 ? Math.round(weeklySales * targetW) : 0;
-      purch = ending - data.base + data.sales;
-    }
-    accEnding += ending;
-    accPurchase += purch;
-    accItemsDetail.push({
-      item,
-      base: data.base,
-      purchase: purch,
-      sales: data.sales,
-      ending,
-      weeks: data.sales > 0 ? ending / ((data.sales / 365) * 7) : null,
-    });
-  }
-
-  const accWeeks = rows.acc.sales > 0 ? accEnding / ((rows.acc.sales / 365) * 7) : null;
-  const sellThrough =
-    rows.apparel.base + apparelPurchase > 0
-      ? (useApparelFormula ? sellThroughPct : (apparelSales / (rows.apparel.base + apparelPurchase)) * 100)
-      : null;
-
   const hasPrev = is2026 && stockPrev && retailPrev;
   const prevMerged = hasPrev ? mergeAccounts(brand, stockPrev, retailPrev, inboundPrev) : [];
   const prevRows =
@@ -525,10 +449,192 @@ export function computeAccountMetrics(
     }
   }
 
+  const prevBySeason = new Map<string, { purchase: number; sales: number; ending: number }>();
+  const prevByAccItem = new Map<string, { purchase: number; sales: number; ending: number }>();
+  if (prevRows && inboundPrev && hasPrev) {
+    const addPrevSeason = (label: string, base: number, purch: number) => {
+      const sales = Math.round((base + purch) * (sellThroughPct / 100));
+      prevBySeason.set(label, { purchase: purch, sales, ending: base + purch - sales });
+    };
+    for (const { season, data } of prevRows.apparelCurrent) {
+      const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
+      addPrevSeason(season, data.base, purch);
+    }
+    for (const grp of prevRows.apparelYearGroups) {
+      for (const { season, data } of grp.seasons) {
+        const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
+        addPrevSeason(season, data.base, purch);
+      }
+    }
+    if (prevRows.apparelOld) {
+      const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", "과시즌");
+      addPrevSeason("과시즌", prevRows.apparelOld.base, purch);
+    }
+    for (const { item, data } of prevRows.accItems) {
+      const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "ACC", item);
+      const ending = data.base + purch - data.sales;
+      prevByAccItem.set(item, { purchase: purch, sales: data.sales, ending });
+    }
+  } else if (prevRows && hasPrev) {
+    for (const { season, data } of prevRows.apparelCurrent) {
+      const sales = data.sales;
+      prevBySeason.set(season, { purchase: 0, sales, ending: data.base - sales });
+    }
+    for (const grp of prevRows.apparelYearGroups) {
+      for (const { season, data } of grp.seasons) {
+        prevBySeason.set(season, { purchase: 0, sales: data.sales, ending: data.base - data.sales });
+      }
+    }
+    if (prevRows.apparelOld) {
+      prevBySeason.set("과시즌", {
+        purchase: 0,
+        sales: prevRows.apparelOld.sales,
+        ending: prevRows.apparelOld.base - prevRows.apparelOld.sales,
+      });
+    }
+    for (const { item, data } of prevRows.accItems) {
+      const weeklySales = (data.sales / 365) * 7;
+      const ending = weeklySales > 0 ? Math.round(weeklySales * (targetWeeks[item] ?? 30)) : 0;
+      const purch = ending - data.base + data.sales;
+      prevByAccItem.set(item, { purchase: purch, sales: data.sales, ending });
+    }
+  }
+
   function yoy(curr: number, prev: number): number | null {
     if (prev === 0) return null;
     return (curr / prev) * 100;
   }
+
+  const apparelCurrent: ApparelSeasonDetail[] = [];
+  const calcSellThrough = (base: number, purch: number, sales: number) =>
+    base + purch > 0 ? (sales / (base + purch)) * 100 : null;
+
+  for (const { season, data } of rows.apparelCurrent) {
+    const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
+    const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
+    const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
+    const ending = data.base + purch - sales;
+    const prev = prevBySeason.get(prevSeason(season));
+    apparelCurrent.push({
+      label: season,
+      base: data.base,
+      purchase: purch,
+      sales,
+      ending,
+      sellThrough: calcSellThrough(data.base, purch, sales),
+      purchaseYoy: prev ? yoy(purch, prev.purchase) : null,
+      salesYoy: prev ? yoy(sales, prev.sales) : null,
+      endingYoy: prev ? yoy(ending, prev.ending) : null,
+    });
+  }
+  const apparelYearGroups: ApparelYearGroupDetail[] = [];
+  for (const grp of rows.apparelYearGroups) {
+    let grpPurchase = 0;
+    const seasons: ApparelSeasonDetail[] = [];
+    for (const { season, data } of grp.seasons) {
+      const p = canCalcOtb ? sesPurchase(season, data.base) : 0;
+      const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
+      grpPurchase += purch;
+      const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
+      const ending = data.base + purch - sales;
+      const prev = prevBySeason.get(prevSeason(season));
+      seasons.push({
+        label: season,
+        base: data.base,
+        purchase: purch,
+        sales,
+        ending,
+        sellThrough: calcSellThrough(data.base, purch, sales),
+        purchaseYoy: prev ? yoy(purch, prev.purchase) : null,
+        salesYoy: prev ? yoy(sales, prev.sales) : null,
+        endingYoy: prev ? yoy(ending, prev.ending) : null,
+      });
+    }
+    const grpSales = useApparelFormula ? Math.round((grp.data.base + grpPurchase) * (sellThroughPct / 100)) : grp.data.sales;
+    const grpEnding = grp.data.base + grpPurchase - grpSales;
+    const grpPrev = grp.seasons.reduce(
+      (a, s) => {
+        const p = prevBySeason.get(prevSeason(s.season));
+        if (p) {
+          a.purchase += p.purchase;
+          a.sales += p.sales;
+          a.ending += p.ending;
+        }
+        return a;
+      },
+      { purchase: 0, sales: 0, ending: 0 }
+    );
+    const hasGrpPrev = grpPrev.purchase || grpPrev.sales || grpPrev.ending;
+    apparelYearGroups.push({
+      label: grp.label,
+      data: {
+        base: grp.data.base,
+        purchase: grpPurchase,
+        sales: grpSales,
+        ending: grpEnding,
+        sellThrough: calcSellThrough(grp.data.base, grpPurchase, grpSales),
+        purchaseYoy: hasGrpPrev ? yoy(grpPurchase, grpPrev.purchase) : null,
+        salesYoy: hasGrpPrev ? yoy(grpSales, grpPrev.sales) : null,
+        endingYoy: hasGrpPrev ? yoy(grpEnding, grpPrev.ending) : null,
+      },
+      seasons,
+    });
+  }
+  let apparelOld: ApparelSeasonDetail | null = null;
+  if (rows.apparelOld) {
+    const oldPurch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", "과시즌") : 0;
+    const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (sellThroughPct / 100)) : rows.apparelOld.sales;
+    const ending = rows.apparelOld.base + oldPurch - oldSales;
+    const oldPrev = prevBySeason.get("과시즌");
+    apparelOld = {
+      label: "과시즌",
+      base: rows.apparelOld.base,
+      purchase: oldPurch,
+      sales: oldSales,
+      ending,
+      sellThrough: calcSellThrough(rows.apparelOld.base, oldPurch, oldSales),
+      purchaseYoy: oldPrev ? yoy(oldPurch, oldPrev.purchase) : null,
+      salesYoy: oldPrev ? yoy(oldSales, oldPrev.sales) : null,
+      endingYoy: oldPrev ? yoy(ending, oldPrev.ending) : null,
+    };
+  }
+
+  const accItemsDetail: AccItemDetail[] = [];
+  let accEnding = 0;
+  let accPurchase = 0;
+  for (const { item, data } of rows.accItems) {
+    const weeklySales = (data.sales / 365) * 7;
+    const targetW = targetWeeks[item] ?? DEFAULT_TARGET_WEEKS[item];
+    let ending: number;
+    let purch: number;
+    if (useInbound) {
+      purch = sumInboundForAccount(inbound!, brand, acc.account_id, "ACC", item);
+      ending = data.base + purch - data.sales;
+    } else {
+      ending = weeklySales > 0 ? Math.round(weeklySales * targetW) : 0;
+      purch = ending - data.base + data.sales;
+    }
+    accEnding += ending;
+    accPurchase += purch;
+    const accPrev = prevByAccItem.get(item);
+    accItemsDetail.push({
+      item,
+      base: data.base,
+      purchase: purch,
+      sales: data.sales,
+      ending,
+      weeks: data.sales > 0 ? ending / ((data.sales / 365) * 7) : null,
+      purchaseYoy: accPrev ? yoy(purch, accPrev.purchase) : null,
+      salesYoy: accPrev ? yoy(data.sales, accPrev.sales) : null,
+      endingYoy: accPrev ? yoy(ending, accPrev.ending) : null,
+    });
+  }
+
+  const accWeeks = rows.acc.sales > 0 ? accEnding / ((rows.acc.sales / 365) * 7) : null;
+  const sellThrough =
+    rows.apparel.base + apparelPurchase > 0
+      ? (useApparelFormula ? sellThroughPct : (apparelSales / (rows.apparel.base + apparelPurchase)) * 100)
+      : null;
 
   return {
     account_id: acc.account_id,

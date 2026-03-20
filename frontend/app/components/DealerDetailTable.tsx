@@ -9,6 +9,7 @@ import { fmtAmt } from "../../lib/utils";
 import {
   mergeAccounts,
   computeAccountMetrics,
+  prevSeason,
   ACC_ORDER,
   DEFAULT_TARGET_WEEKS,
   DealerAccountMetrics,
@@ -131,7 +132,7 @@ export default function DealerDetailTable({
     });
   }, []);
 
-  const metrics = useMemo(() => {
+  const { metrics, metricsPrev } = useMemo(() => {
     const merged = mergeAccounts(
       brand,
       stock ?? stock2026 ?? stock2025 ?? null,
@@ -177,11 +178,11 @@ export default function DealerDetailTable({
     const curr = year === "2026"
       ? (all2026.length > 0 ? all2026 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, "2026", targetWeeks, sellThrough)))
       : (all2025.length > 0 ? all2025 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, year, targetWeeks, sellThrough)));
-    if (all2025.length > 0 || all2026.length > 0) {
-      // 2025·2026 병합 시: 합산 기말 0이어도 대리상은 목록에 포함 (D001 등 누락 방지)
-      return curr;
-    }
-    return curr.filter((m) => m.apparel.ending + m.acc.ending >= 10000);
+    const filtered = curr.filter((m) => m.apparel.ending + m.acc.ending > 0);
+    const accountIds = new Set(filtered.map((m) => m.account_id));
+    const prev =
+      year === "2026" && all2025.length > 0 ? all2025.filter((m) => accountIds.has(m.account_id)) : [];
+    return { metrics: filtered, metricsPrev: prev };
   }, [
     brand,
     stock,
@@ -204,39 +205,99 @@ export default function DealerDetailTable({
 
   const totalRow = useMemo(() => {
     if (metrics.length === 0) return null;
+    const apparelBase = metrics.reduce((s, m) => s + m.apparel.base, 0);
+    const apparelPurchase = metrics.reduce((s, m) => s + m.apparel.purchase, 0);
+    const apparelSales = metrics.reduce((s, m) => s + m.apparel.sales, 0);
+    const apparelEnding = metrics.reduce((s, m) => s + m.apparel.ending, 0);
+    const accBase = metrics.reduce((s, m) => s + m.acc.base, 0);
+    const accPurchase = metrics.reduce((s, m) => s + m.acc.purchase, 0);
+    const accSales = metrics.reduce((s, m) => s + m.acc.sales, 0);
+    const accEnding = metrics.reduce((s, m) => s + m.acc.ending, 0);
+
+    let apparelPurchaseYoy: number | null = null;
+    let apparelSalesYoy: number | null = null;
+    let apparelEndingYoy: number | null = null;
+    let accPurchaseYoy: number | null = null;
+    let accSalesYoy: number | null = null;
+    let accEndingYoy: number | null = null;
+
+    if (year === "2026" && metricsPrev.length === metrics.length) {
+      const prevApparelPurchase = metricsPrev.reduce((s, m) => s + m.apparel.purchase, 0);
+      const prevApparelSales = metricsPrev.reduce((s, m) => s + m.apparel.sales, 0);
+      const prevApparelEnding = metricsPrev.reduce((s, m) => s + m.apparel.ending, 0);
+      const prevAccPurchase = metricsPrev.reduce((s, m) => s + m.acc.purchase, 0);
+      const prevAccSales = metricsPrev.reduce((s, m) => s + m.acc.sales, 0);
+      const prevAccEnding = metricsPrev.reduce((s, m) => s + m.acc.ending, 0);
+      const yoy = (curr: number, prev: number) => (prev === 0 ? null : (curr / prev) * 100);
+      apparelPurchaseYoy = yoy(apparelPurchase, prevApparelPurchase);
+      apparelSalesYoy = yoy(apparelSales, prevApparelSales);
+      apparelEndingYoy = yoy(apparelEnding, prevApparelEnding);
+      accPurchaseYoy = yoy(accPurchase, prevAccPurchase);
+      accSalesYoy = yoy(accSales, prevAccSales);
+      accEndingYoy = yoy(accEnding, prevAccEnding);
+    }
+
     return {
       apparel: {
-        base: metrics.reduce((s, m) => s + m.apparel.base, 0),
-        purchase: metrics.reduce((s, m) => s + m.apparel.purchase, 0),
-        sales: metrics.reduce((s, m) => s + m.apparel.sales, 0),
-        ending: metrics.reduce((s, m) => s + m.apparel.ending, 0),
-        sellThrough: (() => {
-          const base = metrics.reduce((s, m) => s + m.apparel.base, 0);
-          const purch = metrics.reduce((s, m) => s + m.apparel.purchase, 0);
-          const sales = metrics.reduce((s, m) => s + m.apparel.sales, 0);
-          return base + purch > 0 ? (sales / (base + purch)) * 100 : null;
-        })(),
+        base: apparelBase,
+        purchase: apparelPurchase,
+        sales: apparelSales,
+        ending: apparelEnding,
+        sellThrough: apparelBase + apparelPurchase > 0 ? (apparelSales / (apparelBase + apparelPurchase)) * 100 : null,
+        purchaseYoy: apparelPurchaseYoy,
+        salesYoy: apparelSalesYoy,
+        endingYoy: apparelEndingYoy,
       },
       acc: {
-        base: metrics.reduce((s, m) => s + m.acc.base, 0),
-        purchase: metrics.reduce((s, m) => s + m.acc.purchase, 0),
-        sales: metrics.reduce((s, m) => s + m.acc.sales, 0),
-        ending: metrics.reduce((s, m) => s + m.acc.ending, 0),
-        weeks: (() => {
-          const sales = metrics.reduce((s, m) => s + m.acc.sales, 0);
-          const ending = metrics.reduce((s, m) => s + m.acc.ending, 0);
-          return sales > 0 ? ending / ((sales / 365) * 7) : null;
-        })(),
+        base: accBase,
+        purchase: accPurchase,
+        sales: accSales,
+        ending: accEnding,
+        weeks: accSales > 0 ? accEnding / ((accSales / 365) * 7) : null,
+        purchaseYoy: accPurchaseYoy,
+        salesYoy: accSalesYoy,
+        endingYoy: accEndingYoy,
       },
     };
-  }, [metrics]);
+  }, [metrics, metricsPrev, year]);
 
   const totalAgg = useMemo(() => {
     if (metrics.length === 0) return null;
-    const apparelCurrent: ApparelSeasonDetail[] = [];
-    const apparelYearGroups: ApparelYearGroupDetail[] = [];
-    let apparelOld: ApparelSeasonDetail | null = null;
-    const accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null }[] = [];
+    const apparelCurrent: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null })[] = [];
+    const apparelYearGroups: (ApparelYearGroupDetail & { data: ApparelYearGroupDetail["data"] & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null } })[] = [];
+    let apparelOld: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }) | null = null;
+    const accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null; purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }[] = [];
+
+    const yoyFn = (curr: number, prev: number) => (prev === 0 ? null : (curr / prev) * 100);
+
+    const prevByLabel = new Map<string, { purchase: number; sales: number; ending: number }>();
+    if (year === "2026" && metricsPrev.length === metrics.length) {
+      for (const m of metricsPrev) {
+        for (const s of m.apparelCurrent) {
+          const ex = prevByLabel.get(s.label) ?? { purchase: 0, sales: 0, ending: 0 };
+          ex.purchase += s.purchase;
+          ex.sales += s.sales;
+          ex.ending += s.ending;
+          prevByLabel.set(s.label, ex);
+        }
+        for (const grp of m.apparelYearGroups) {
+          for (const s of grp.seasons) {
+            const ex = prevByLabel.get(s.label) ?? { purchase: 0, sales: 0, ending: 0 };
+            ex.purchase += s.purchase;
+            ex.sales += s.sales;
+            ex.ending += s.ending;
+            prevByLabel.set(s.label, ex);
+          }
+        }
+        if (m.apparelOld) {
+          const ex = prevByLabel.get("과시즌") ?? { purchase: 0, sales: 0, ending: 0 };
+          ex.purchase += m.apparelOld.purchase;
+          ex.sales += m.apparelOld.sales;
+          ex.ending += m.apparelOld.ending;
+          prevByLabel.set("과시즌", ex);
+        }
+      }
+    }
 
     const currByLabel = new Map<string, { base: number; purchase: number; sales: number; ending: number }>();
     for (const m of metrics) {
@@ -257,12 +318,28 @@ export default function DealerDetailTable({
       const ex = currByLabel.get(label);
       if (!ex) continue;
       const sellThrough = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
-      apparelCurrent.push({ label, ...ex, sellThrough });
+      const prev = prevByLabel.get(prevSeason(label));
+      apparelCurrent.push({
+        label,
+        ...ex,
+        sellThrough,
+        purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
+        salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
+        endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+      });
     }
     for (const [label, ex] of currByLabel) {
       if (seenCurr.has(label)) continue;
       const sellThrough = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
-      apparelCurrent.push({ label, ...ex, sellThrough });
+      const prev = prevByLabel.get(prevSeason(label));
+      apparelCurrent.push({
+        label,
+        ...ex,
+        sellThrough,
+        purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
+        salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
+        endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+      });
     }
 
     const grpByLabel = new Map<string, { data: { base: number; purchase: number; sales: number; ending: number; sellThrough: number | null }; seasons: Map<string, ApparelSeasonDetail> }>();
@@ -287,19 +364,65 @@ export default function DealerDetailTable({
         }
       }
     }
+    const prevByGrpLabel = new Map<string, { purchase: number; sales: number; ending: number }>();
+    if (year === "2026" && metricsPrev.length === metrics.length) {
+      for (const m of metricsPrev) {
+        for (const grp of m.apparelYearGroups) {
+          const ex = prevByGrpLabel.get(grp.label) ?? { purchase: 0, sales: 0, ending: 0 };
+          ex.purchase += grp.data.purchase;
+          ex.sales += grp.data.sales;
+          ex.ending += grp.data.ending;
+          prevByGrpLabel.set(grp.label, ex);
+        }
+      }
+    }
+    const prevByAccItem = new Map<string, { purchase: number; sales: number; ending: number }>();
+    if (year === "2026" && metricsPrev.length === metrics.length) {
+      for (const m of metricsPrev) {
+        for (const a of m.accItemsDetail) {
+          const ex = prevByAccItem.get(a.item) ?? { purchase: 0, sales: 0, ending: 0 };
+          ex.purchase += a.purchase;
+          ex.sales += a.sales;
+          ex.ending += a.ending;
+          prevByAccItem.set(a.item, ex);
+        }
+      }
+    }
+
     for (const grp of metrics[0]?.apparelYearGroups ?? []) {
       const g = grpByLabel.get(grp.label);
       if (!g) continue;
       const { base, purchase, sales, ending } = g.data;
       const sellThrough = base + purchase > 0 ? (sales / (base + purchase)) * 100 : null;
-      const seasons: ApparelSeasonDetail[] = [];
+      const seasons: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null })[] = [];
       for (const s of grp.seasons) {
         const ex = g.seasons.get(s.label);
         if (!ex) continue;
         const st = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
-        seasons.push({ ...ex, sellThrough: st });
+        const prev = prevByLabel.get(prevSeason(s.label));
+        seasons.push({
+          ...ex,
+          sellThrough: st,
+          purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
+          salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
+          endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+        });
       }
-      apparelYearGroups.push({ label: grp.label, data: { base, purchase, sales, ending, sellThrough }, seasons });
+      const grpPrev = prevByGrpLabel.get(grp.label);
+      apparelYearGroups.push({
+        label: grp.label,
+        data: {
+          base,
+          purchase,
+          sales,
+          ending,
+          sellThrough,
+          purchaseYoy: grpPrev ? yoyFn(purchase, grpPrev.purchase) : null,
+          salesYoy: grpPrev ? yoyFn(sales, grpPrev.sales) : null,
+          endingYoy: grpPrev ? yoyFn(ending, grpPrev.ending) : null,
+        },
+        seasons,
+      });
     }
 
     let oldSum = { base: 0, purchase: 0, sales: 0, ending: 0 };
@@ -313,7 +436,15 @@ export default function DealerDetailTable({
     }
     if (oldSum.base + oldSum.purchase + oldSum.sales + oldSum.ending > 0) {
       const st = oldSum.base + oldSum.purchase > 0 ? (oldSum.sales / (oldSum.base + oldSum.purchase)) * 100 : null;
-      apparelOld = { label: "과시즌", ...oldSum, sellThrough: st };
+      const oldPrev = prevByLabel.get("과시즌");
+      apparelOld = {
+        label: "과시즌",
+        ...oldSum,
+        sellThrough: st,
+        purchaseYoy: oldPrev ? yoyFn(oldSum.purchase, oldPrev.purchase) : null,
+        salesYoy: oldPrev ? yoyFn(oldSum.sales, oldPrev.sales) : null,
+        endingYoy: oldPrev ? yoyFn(oldSum.ending, oldPrev.ending) : null,
+      };
     }
 
     const accByItem = new Map<string, { base: number; purchase: number; sales: number; ending: number }>();
@@ -331,23 +462,61 @@ export default function DealerDetailTable({
       const ex = accByItem.get(item);
       if (!ex) continue;
       const weeks = ex.sales > 0 ? ex.ending / ((ex.sales / 365) * 7) : null;
-      accItemsDetail.push({ item, ...ex, weeks });
+      const accPrev = prevByAccItem.get(item);
+      accItemsDetail.push({
+        item,
+        ...ex,
+        weeks,
+        purchaseYoy: accPrev ? yoyFn(ex.purchase, accPrev.purchase) : null,
+        salesYoy: accPrev ? yoyFn(ex.sales, accPrev.sales) : null,
+        endingYoy: accPrev ? yoyFn(ex.ending, accPrev.ending) : null,
+      });
     }
 
     return { apparelCurrent, apparelYearGroups, apparelOld, accItemsDetail };
-  }, [metrics]);
+  }, [metrics, metricsPrev, year]);
 
   if (metrics.length === 0) return null;
 
-  const th = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200";
-  const td = "px-2 py-1.5 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap border-b border-slate-100";
-  const tdApp = `${td} bg-blue-50/30`;
-  const tdAcc = `${td} bg-violet-50/25`;
-  const tdAccFirst = `${tdAcc} border-l-2 border-violet-200`;
-  const tdL = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-100 overflow-hidden";
+  const th = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r border-slate-200";
+  const thNoRight = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r-0";
+  const thL = `${th} text-left sticky left-0 bg-white z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] border-r-2 border-slate-200`;
+  const thLast = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r-0";
+  const td = "px-2 py-1.5 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap border-b border-slate-200";
+  const tdDottedRight = "border-r border-slate-200 [border-right-style:dashed]";
+  const tdApp = td;
+  const tdAppNoRight = tdApp;
+  const tdAppBase = `${tdApp} ${tdDottedRight}`;
+  const tdAppPurchaseYoy = `${tdApp} ${tdDottedRight}`;
+  const tdAppSalesYoy = `${tdApp} ${tdDottedRight}`;
+  const tdAppSellThrough = `${tdApp} border-r-2 border-slate-200`;
+  const tdAcc = td;
+  const tdAccNoRight = tdAcc;
+  const tdAccBase = `${tdAcc} ${tdDottedRight}`;
+  const tdAccPurchaseYoy = `${tdAcc} ${tdDottedRight}`;
+  const tdAccSalesYoy = `${tdAcc} ${tdDottedRight}`;
+  const tdAccFirst = tdAcc;
+  const tdAccLast = `${tdAcc} border-r-0`;
+  const tdSub = "px-2 py-1.5 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap border-b border-slate-100/30";
+  const tdSubDottedRight = "border-r border-slate-200 [border-right-style:dashed] border-b-slate-100/30";
+  const tdSubApp = tdSub;
+  const tdSubAppBase = `${tdSubApp} ${tdSubDottedRight}`;
+  const tdSubAppPurchaseYoy = `${tdSubApp} ${tdSubDottedRight}`;
+  const tdSubAppSalesYoy = `${tdSubApp} ${tdSubDottedRight}`;
+  const tdSubAppSellThrough = `${tdSubApp} border-r-2 border-slate-200 border-b-slate-100/30`;
+  const tdSubAcc = tdSub;
+  const tdSubAccBase = `${tdSubAcc} ${tdSubDottedRight}`;
+  const tdSubAccPurchaseYoy = `${tdSubAcc} ${tdSubDottedRight}`;
+  const tdSubAccSalesYoy = `${tdSubAcc} ${tdSubDottedRight}`;
+  const tdSubAccLast = `${tdSubAcc} border-r-0`;
+  const tdLSub = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-100/30 overflow-hidden";
+  const tdLSubWithRight = `${tdLSub} border-r-2 border-slate-200 border-b-slate-100/30`;
+  const tdLBase = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-2 border-slate-200 overflow-hidden sticky left-0 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]";
+  const tdL = `${tdLBase} bg-white`;
+  const tdLTotal = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-2 border-slate-200 overflow-hidden sticky left-0 bg-slate-100 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] font-semibold";
 
   // [name, 중분류(의류), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, SellThrough, 중분류(ACC), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, 재고주수]
-  const COL_WIDTHS = [200, 65, 72, 72, 72, 72, 72, 72, 72, 90, 65, 72, 72, 72, 72, 72, 72, 72, 72];
+  const COL_WIDTHS = [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62];
   const colgroup = (
     <colgroup>
       {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
@@ -431,39 +600,39 @@ export default function DealerDetailTable({
         </div>
       )}
         <div ref={headScrollRef} className="overflow-hidden">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 950 }}>
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
           {colgroup}
         <thead>
           <tr>
-            <th className={`${th} text-left overflow-hidden`} rowSpan={2}>
+            <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-2 border-slate-400 overflow-hidden sticky left-0 bg-[#1e3a5f] z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]" rowSpan={2}>
               (코드) 대리상명칭
             </th>
-            <th className={`${th} bg-blue-50/60`} colSpan={9}>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r border-slate-400 bg-[#1e3a5f]" colSpan={9}>
               의류
             </th>
-            <th className={`${th} bg-violet-100/60`} colSpan={9}>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-0 bg-[#1e3a5f]" colSpan={9}>
               ACC
             </th>
           </tr>
           <tr>
-            <th className={`${th} bg-blue-50/40`}>중분류</th>
-            <th className={`${th} bg-blue-50/40`}>기초</th>
-            <th className={`${th} bg-blue-50/40`}>매입</th>
-            <th className={`${th} bg-blue-50/40`}>YOY</th>
-            <th className={`${th} bg-blue-50/40`}>판매</th>
-            <th className={`${th} bg-blue-50/40`}>YOY</th>
-            <th className={`${th} bg-blue-50/40`}>기말재고</th>
-            <th className={`${th} bg-blue-50/40`}>YOY</th>
-            <th className={`${th} bg-blue-50/40`}>Sell Through</th>
-            <th className={`${th} bg-violet-50/50 border-l-2 border-violet-200`}>중분류</th>
-            <th className={`${th} bg-violet-50/50`}>기초</th>
-            <th className={`${th} bg-violet-50/50`}>매입</th>
-            <th className={`${th} bg-violet-50/50`}>YOY</th>
-            <th className={`${th} bg-violet-50/50`}>판매</th>
-            <th className={`${th} bg-violet-50/50`}>YOY</th>
-            <th className={`${th} bg-violet-50/50`}>기말재고</th>
-            <th className={`${th} bg-violet-50/50`}>YOY</th>
-            <th className={`${th} bg-violet-50/50`}>재고주수</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-l-2 border-slate-200`}>중분류</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
+            <th className={`${th} bg-sky-100 text-slate-700`}>YOY</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r-2 border-slate-200`}>Sell Through</th>
+            <th className={`${th} bg-sky-100 text-slate-700`}>중분류</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
+            <th className={`${th} bg-sky-100 text-slate-700`}>YOY</th>
+            <th className={`${thLast} bg-sky-100 text-slate-700`}>재고주수</th>
           </tr>
         </thead>
         <tbody>
@@ -472,7 +641,7 @@ export default function DealerDetailTable({
               onClick={() => toggleExpand("__total__")}
               className="cursor-pointer bg-slate-200/70 font-semibold hover:bg-slate-200/90"
             >
-              <td className={tdL}>
+              <td className={tdLTotal}>
                 <div className="inline-flex items-center gap-1">
                   {expandedIds.has("__total__") ? (
                     <ChevronDownIcon className="h-3.5 w-3.5 text-slate-500 shrink-0" />
@@ -482,24 +651,24 @@ export default function DealerDetailTable({
                   <span>전체</span>
                 </div>
               </td>
-              <td className={tdApp}>—</td>
-              <td className={tdApp}><Num v={totalRow.apparel.base} /></td>
-              <td className={tdApp}><Num v={totalRow.apparel.purchase} /></td>
-              <td className={tdApp}>—</td>
-              <td className={tdApp}><Num v={totalRow.apparel.sales} /></td>
-              <td className={tdApp}>—</td>
-              <td className={tdApp}><Num v={totalRow.apparel.ending} /></td>
-              <td className={tdApp}>—</td>
-              <td className={tdApp}>{totalRow.apparel.sellThrough != null ? `${totalRow.apparel.sellThrough.toFixed(1)}%` : "—"}</td>
-              <td className={tdAccFirst}>—</td>
-              <td className={tdAcc}><Num v={totalRow.acc.base} /></td>
-              <td className={tdAcc}><Num v={totalRow.acc.purchase} /></td>
-              <td className={tdAcc}>—</td>
-              <td className={tdAcc}><Num v={totalRow.acc.sales} /></td>
-              <td className={tdAcc}>—</td>
-              <td className={tdAcc}><Num v={totalRow.acc.ending} /></td>
-              <td className={tdAcc}>—</td>
-              <td className={`${tdAcc} ${totalRow.acc.weeks != null ? (totalRow.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
+              <td className={tdApp} />
+              <td className={tdAppBase}><Num v={totalRow.apparel.base} /></td>
+              <td className={tdAppNoRight}><Num v={totalRow.apparel.purchase} /></td>
+              <td className={tdAppPurchaseYoy}><Yoy v={totalRow.apparel.purchaseYoy ?? null} /></td>
+              <td className={tdAppNoRight}><Num v={totalRow.apparel.sales} /></td>
+              <td className={tdAppSalesYoy}><Yoy v={totalRow.apparel.salesYoy ?? null} /></td>
+              <td className={tdAppNoRight}><Num v={totalRow.apparel.ending} /></td>
+              <td className={tdApp}><Yoy v={totalRow.apparel.endingYoy ?? null} /></td>
+              <td className={tdAppSellThrough}>{totalRow.apparel.sellThrough != null ? `${totalRow.apparel.sellThrough.toFixed(1)}%` : "—"}</td>
+              <td className={tdAccFirst} />
+              <td className={tdAccBase}><Num v={totalRow.acc.base} /></td>
+              <td className={tdAccNoRight}><Num v={totalRow.acc.purchase} /></td>
+              <td className={tdAccPurchaseYoy}><Yoy v={totalRow.acc.purchaseYoy ?? null} /></td>
+              <td className={tdAccNoRight}><Num v={totalRow.acc.sales} /></td>
+              <td className={tdAccSalesYoy}><Yoy v={totalRow.acc.salesYoy ?? null} /></td>
+              <td className={tdAccNoRight}><Num v={totalRow.acc.ending} /></td>
+              <td className={tdAcc}><Yoy v={totalRow.acc.endingYoy ?? null} /></td>
+              <td className={`${tdAccLast} ${totalRow.acc.weeks != null ? (totalRow.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
                 {totalRow.acc.weeks != null ? `${totalRow.acc.weeks.toFixed(1)}주` : "—"}
               </td>
             </tr>
@@ -513,7 +682,7 @@ export default function DealerDetailTable({
         onScroll={onBodyTableScroll}
         className="overflow-x-auto"
       >
-      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 950 }}>
+      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
         {colgroup}
         <thead style={{ height: 0, visibility: "hidden" }} aria-hidden="true">
           <tr>
@@ -535,24 +704,59 @@ export default function DealerDetailTable({
               accItemsDetail={totalAgg.accItemsDetail}
               yearGroupOpen={yearGroupOpen["__total__"] ?? new Set()}
               onToggleYearGroup={(label) => toggleYearGroup("__total__", label)}
-              td={td}
-              tdL={tdL}
+              year={year}
+              tdSubApp={tdSubApp}
+              tdSubAppBase={tdSubAppBase}
+              tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
+              tdSubAppSalesYoy={tdSubAppSalesYoy}
+              tdSubAppSellThrough={tdSubAppSellThrough}
+              tdSubAcc={tdSubAcc}
+              tdSubAccBase={tdSubAccBase}
+              tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
+              tdSubAccSalesYoy={tdSubAccSalesYoy}
+              tdSubAccLast={tdSubAccLast}
+              tdLSub={tdLSub}
+              tdLSubWithRight={tdLSubWithRight}
             />
           )}
-          {metrics.map((m) => (
+          {metrics.map((m, index) => (
             <DealerRow
               key={m.account_id}
               m={m}
+              year={year}
               accountNameMap={accountNameMap}
               expanded={expandedIds.has(m.account_id)}
               onToggle={() => toggleExpand(m.account_id)}
               yearGroupOpen={yearGroupOpen[m.account_id] ?? new Set()}
               onToggleYearGroup={(label) => toggleYearGroup(m.account_id, label)}
+              rowIndex={index}
               td={td}
               tdApp={tdApp}
+              tdAppNoRight={tdAppNoRight}
+              tdAppBase={tdAppBase}
+              tdAppPurchaseYoy={tdAppPurchaseYoy}
+              tdAppSalesYoy={tdAppSalesYoy}
+              tdAppSellThrough={tdAppSellThrough}
               tdAcc={tdAcc}
+              tdAccNoRight={tdAccNoRight}
+              tdAccBase={tdAccBase}
+              tdAccPurchaseYoy={tdAccPurchaseYoy}
+              tdAccSalesYoy={tdAccSalesYoy}
               tdAccFirst={tdAccFirst}
-              tdL={tdL}
+              tdAccLast={tdAccLast}
+              tdLBase={tdLBase}
+              tdSubApp={tdSubApp}
+              tdSubAppBase={tdSubAppBase}
+              tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
+              tdSubAppSalesYoy={tdSubAppSalesYoy}
+              tdSubAppSellThrough={tdSubAppSellThrough}
+              tdSubAcc={tdSubAcc}
+              tdSubAccBase={tdSubAccBase}
+              tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
+              tdSubAccSalesYoy={tdSubAccSalesYoy}
+              tdSubAccLast={tdSubAccLast}
+              tdLSub={tdLSub}
+              tdLSubWithRight={tdLSubWithRight}
             />
           ))}
         </tbody>
@@ -569,18 +773,41 @@ function SlotsDetailRows({
   accItemsDetail,
   yearGroupOpen,
   onToggleYearGroup,
-  td,
-  tdL,
+  year,
+  tdSubApp,
+  tdSubAppBase,
+  tdSubAppPurchaseYoy,
+  tdSubAppSalesYoy,
+  tdSubAppSellThrough,
+  tdSubAcc,
+  tdSubAccBase,
+  tdSubAccPurchaseYoy,
+  tdSubAccSalesYoy,
+  tdSubAccLast,
+  tdLSub,
+  tdLSubWithRight,
 }: {
-  apparelCurrent: ApparelSeasonDetail[];
-  apparelYearGroups: ApparelYearGroupDetail[];
-  apparelOld: ApparelSeasonDetail | null;
-  accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null }[];
+  apparelCurrent: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null })[];
+  apparelYearGroups: (ApparelYearGroupDetail & { data: ApparelYearGroupDetail["data"] & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null } })[];
+  apparelOld: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }) | null;
+  accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null; purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }[];
   yearGroupOpen: Set<string>;
   onToggleYearGroup: (label: string) => void;
-  td: string;
-  tdL: string;
+  year: string;
+  tdSubApp: string;
+  tdSubAppBase: string;
+  tdSubAppPurchaseYoy: string;
+  tdSubAppSalesYoy: string;
+  tdSubAppSellThrough: string;
+  tdSubAcc: string;
+  tdSubAccBase: string;
+  tdSubAccPurchaseYoy: string;
+  tdSubAccSalesYoy: string;
+  tdSubAccLast: string;
+  tdLSub: string;
+  tdLSubWithRight: string;
 }) {
+  const showYoy = year === "2026";
   const apparelSlots: ApparelSlot[] = [];
   apparelCurrent.forEach((s) => apparelSlots.push({ type: "season", data: s }));
   apparelYearGroups.forEach((grp) => {
@@ -593,6 +820,7 @@ function SlotsDetailRows({
   if (apparelOld) apparelSlots.push({ type: "season", data: apparelOld });
   const accSlots = accItemsDetail;
   const maxLen = Math.max(apparelSlots.length, accSlots.length);
+  const borderBLast = "border-b-slate-200";
 
   return (
     <>
@@ -600,83 +828,112 @@ function SlotsDetailRows({
         const ap = apparelSlots[i];
         const ac = accSlots[i];
         if (!ap && !ac) return null;
+        const isLastRow = i === maxLen - 1;
+        const cellBorder = isLastRow ? borderBLast : "";
         if (ap?.type === "group") {
           const grp = ap.data;
           return (
             <tr
               key={`grp-${grp.label}`}
               onClick={(e) => { e.stopPropagation(); onToggleYearGroup(grp.label); }}
-              className="cursor-pointer bg-slate-50/30 hover:bg-slate-50/50"
+              className="cursor-pointer hover:bg-slate-50/50"
             >
-              <td className={tdL} style={{ paddingLeft: 28 }}><span className="text-slate-400">ㄴ</span></td>
-              <td className={`${td} bg-blue-50/30 font-medium`}>
+              <td className={`${tdLSubWithRight} ${cellBorder}`} style={{ paddingLeft: 12 }} />
+              <td className={`${tdSubApp} font-medium ${cellBorder}`}>
                 <div className="inline-flex items-center gap-1">
                   {ap.isOpen ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
                   {grp.label}
                 </div>
               </td>
-              <td className={td}><Num v={grp.data.base} /></td>
-              <td className={td}><Num v={grp.data.purchase} /></td>
-              <td className={td}>—</td>
-              <td className={td}><Num v={grp.data.sales} /></td>
-              <td className={td}>—</td>
-              <td className={td}><Num v={grp.data.ending} /></td>
-              <td className={td}>—</td>
-              <td className={td}>{grp.data.sellThrough != null ? `${grp.data.sellThrough.toFixed(1)}%` : "—"}</td>
-              <td className={`${td} bg-violet-50/25 border-l-2 border-violet-200 ${ac ? "font-medium" : ""}`}>{ac?.item ?? ""}</td>
+              <td className={`${tdSubAppBase} ${cellBorder}`}><Num v={grp.data.base} /></td>
+              <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.purchase} /></td>
+              <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.purchaseYoy ?? null} /> : "—"}</td>
+              <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.sales} /></td>
+              <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.salesYoy ?? null} /> : "—"}</td>
+              <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.ending} /></td>
+              <td className={`${tdSubApp} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.endingYoy ?? null} /> : "—"}</td>
+              <td className={`${tdSubAppSellThrough} ${cellBorder}`}>{grp.data.sellThrough != null ? `${grp.data.sellThrough.toFixed(1)}%` : "—"}</td>
+              <td className={`${tdSubAcc} ${ac ? "font-medium" : ""} ${cellBorder}`}>{ac?.item ?? ""}</td>
               {ac ? (
                 <>
-                  <td className={`${td} bg-violet-50/25`}><Num v={ac.base} /></td>
-                  <td className={`${td} bg-violet-50/25`}><Num v={ac.purchase} /></td>
-                  <td className={`${td} bg-violet-50/25`}>—</td>
-                  <td className={`${td} bg-violet-50/25`}><Num v={ac.sales} /></td>
-                  <td className={`${td} bg-violet-50/25`}>—</td>
-                  <td className={`${td} bg-violet-50/25`}><Num v={ac.ending} /></td>
-                  <td className={`${td} bg-violet-50/25`}>—</td>
-                  <td className={`${td} bg-violet-50/25 ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
+                  <td className={`${tdSubAccBase} ${cellBorder}`}><Num v={ac.base} /></td>
+                  <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.purchase} /></td>
+                  <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : "—"}</td>
+                  <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
+                  <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : "—"}</td>
+                  <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.ending} /></td>
+                  <td className={`${tdSubAcc} ${cellBorder}`}>{showYoy ? <Yoy v={ac.endingYoy ?? null} /> : "—"}</td>
+                  <td className={`${tdSubAcc} ${cellBorder} ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
                     {ac.weeks != null ? `${ac.weeks.toFixed(1)}주` : "—"}
                   </td>
                 </>
               ) : (
-                <td className={`${td} bg-violet-50/25`} colSpan={8} />
+                <>
+                  <td className={`${tdSubAccBase} ${cellBorder}`} />
+                  <td className={`${tdSubAcc} ${cellBorder}`} />
+                  <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
+                  <td className={`${tdSubAcc} ${cellBorder}`} />
+                  <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                  <td className={`${tdSubAcc} ${cellBorder}`} />
+                  <td className={`${tdSubAcc} ${cellBorder}`} />
+                  <td className={`${tdSubAccLast} ${cellBorder}`} />
+                </>
               )}
             </tr>
           );
         }
         return (
-          <tr key={i} className="bg-slate-50/30 hover:bg-slate-50/50">
-            <td className={tdL} style={{ paddingLeft: 28 }}><span className="text-slate-400">ㄴ</span></td>
-            <td className={`${td} bg-blue-50/30 font-medium`}>{ap?.type === "season" ? ap.data.label : ""}</td>
+          <tr key={i} className="hover:bg-slate-50/50">
+            <td className={`${tdLSubWithRight} ${cellBorder}`} style={{ paddingLeft: 12 }} />
+            <td className={`${tdSubApp} font-medium ${cellBorder}`}>{ap?.type === "season" ? ap.data.label : ""}</td>
             {ap?.type === "season" ? (
               <>
-                <td className={td}><Num v={ap.data.base} /></td>
-                <td className={td}><Num v={ap.data.purchase} /></td>
-                <td className={td}>—</td>
-                <td className={td}><Num v={ap.data.sales} /></td>
-                <td className={td}>—</td>
-                <td className={td}><Num v={ap.data.ending} /></td>
-                <td className={td}>—</td>
-                <td className={td}>{ap.data.sellThrough != null ? `${ap.data.sellThrough.toFixed(1)}%` : "—"}</td>
+                <td className={`${tdSubAppBase} ${cellBorder}`}><Num v={ap.data.base} /></td>
+                <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.purchase} /></td>
+                <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.purchaseYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.sales} /></td>
+                <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.salesYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.ending} /></td>
+                <td className={`${tdSubApp} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.endingYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubAppSellThrough} ${cellBorder}`}>{ap.data.sellThrough != null ? `${ap.data.sellThrough.toFixed(1)}%` : "—"}</td>
               </>
             ) : (
-              <td className={td} colSpan={8} />
+              <>
+                <td className={`${tdSubAppBase} ${cellBorder}`} />
+                <td className={`${tdSubApp} ${cellBorder}`} />
+                <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`} />
+                <td className={`${tdSubApp} ${cellBorder}`} />
+                <td className={`${tdSubAppSalesYoy} ${cellBorder}`} />
+                <td className={`${tdSubApp} ${cellBorder}`} />
+                <td className={`${tdSubApp} ${cellBorder}`} />
+                <td className={`${tdSubAppSellThrough} ${cellBorder}`} />
+              </>
             )}
-            <td className={`${td} bg-violet-50/25 border-l-2 border-violet-200 font-medium`}>{ac?.item ?? ""}</td>
+            <td className={`${tdSubAcc} font-medium ${cellBorder}`}>{ac?.item ?? ""}</td>
             {ac ? (
               <>
-                <td className={`${td} bg-violet-50/25`}><Num v={ac.base} /></td>
-                <td className={`${td} bg-violet-50/25`}><Num v={ac.purchase} /></td>
-                <td className={`${td} bg-violet-50/25`}>—</td>
-                <td className={`${td} bg-violet-50/25`}><Num v={ac.sales} /></td>
-                <td className={`${td} bg-violet-50/25`}>—</td>
-                <td className={`${td} bg-violet-50/25`}><Num v={ac.ending} /></td>
-                <td className={`${td} bg-violet-50/25`}>—</td>
-                <td className={`${td} bg-violet-50/25 ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
+                <td className={`${tdSubAccBase} ${cellBorder}`}><Num v={ac.base} /></td>
+                <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.purchase} /></td>
+                <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
+                <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.ending} /></td>
+                <td className={`${tdSubAcc} ${cellBorder}`}>{showYoy ? <Yoy v={ac.endingYoy ?? null} /> : "—"}</td>
+                <td className={`${tdSubAcc} ${cellBorder} ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
                   {ac.weeks != null ? `${ac.weeks.toFixed(1)}주` : "—"}
                 </td>
               </>
             ) : (
-              <td className={`${td} bg-violet-50/25`} colSpan={8} />
+              <>
+                <td className={`${tdSubAccBase} ${cellBorder}`} />
+                <td className={`${tdSubAcc} ${cellBorder}`} />
+                <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
+                <td className={`${tdSubAcc} ${cellBorder}`} />
+                <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                <td className={`${tdSubAcc} ${cellBorder}`} />
+                <td className={`${tdSubAcc} ${cellBorder}`} />
+                <td className={`${tdSubAccLast} ${cellBorder}`} />
+              </>
             )}
           </tr>
         );
@@ -687,39 +944,89 @@ function SlotsDetailRows({
 
 function DealerRow({
   m,
+  year,
   accountNameMap,
   expanded,
   onToggle,
   yearGroupOpen,
   onToggleYearGroup,
+  rowIndex,
   td,
   tdApp,
+  tdAppNoRight,
+  tdAppBase,
+  tdAppPurchaseYoy,
+  tdAppSalesYoy,
+  tdAppSellThrough,
   tdAcc,
+  tdAccNoRight,
+  tdAccBase,
+  tdAccPurchaseYoy,
+  tdAccSalesYoy,
   tdAccFirst,
-  tdL,
+  tdAccLast,
+  tdLBase,
+  tdSubApp,
+  tdSubAppBase,
+  tdSubAppPurchaseYoy,
+  tdSubAppSalesYoy,
+  tdSubAppSellThrough,
+  tdSubAcc,
+  tdSubAccBase,
+  tdSubAccPurchaseYoy,
+  tdSubAccSalesYoy,
+  tdSubAccLast,
+  tdLSub,
+  tdLSubWithRight,
 }: {
   m: DealerAccountMetrics;
+  year: string;
   accountNameMap?: Record<string, { account_nm_en: string; account_nm_kr: string }>;
   expanded: boolean;
   onToggle: () => void;
   yearGroupOpen: Set<string>;
   onToggleYearGroup: (label: string) => void;
+  rowIndex: number;
   td: string;
   tdApp: string;
+  tdAppNoRight: string;
+  tdAppBase: string;
+  tdAppPurchaseYoy: string;
+  tdAppSalesYoy: string;
+  tdAppSellThrough: string;
   tdAcc: string;
+  tdAccNoRight: string;
+  tdAccBase: string;
+  tdAccPurchaseYoy: string;
+  tdAccSalesYoy: string;
   tdAccFirst: string;
-  tdL: string;
+  tdAccLast: string;
+  tdLBase: string;
+  tdSubApp: string;
+  tdSubAppBase: string;
+  tdSubAppPurchaseYoy: string;
+  tdSubAppSalesYoy: string;
+  tdSubAppSellThrough: string;
+  tdSubAcc: string;
+  tdSubAccBase: string;
+  tdSubAccPurchaseYoy: string;
+  tdSubAccSalesYoy: string;
+  tdSubAccLast: string;
+  tdLSub: string;
+  tdLSubWithRight: string;
 }) {
   const names = accountNameMap?.[m.account_id];
   const displayEn = names?.account_nm_en || m.account_nm_en;
   const displayKr = names?.account_nm_kr;
+  const rowBg = rowIndex % 2 === 1 ? "bg-slate-50/40" : "";
+  const borderB = expanded ? "border-b-slate-100/30" : "";
   return (
     <>
       <tr
         onClick={onToggle}
-        className="cursor-pointer hover:bg-slate-50/50 border-b border-slate-100"
+        className={`cursor-pointer hover:bg-slate-50/50 border-t border-t-slate-200 ${rowBg}`}
       >
-        <td className={tdL}>
+        <td className={`${tdLBase} ${rowBg || "bg-white"} ${borderB}`}>
           <div className="inline-flex items-center gap-1">
             {expanded ? (
               <ChevronDownIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
@@ -732,26 +1039,26 @@ function DealerRow({
             </span>
           </div>
         </td>
-        <td className={tdApp}>—</td>
-        <td className={tdApp}><Num v={m.apparel.base} /></td>
-        <td className={tdApp}><Num v={m.apparel.purchase} /></td>
-        <td className={tdApp}><Yoy v={m.apparel.purchaseYoy} /></td>
-        <td className={tdApp}><Num v={m.apparel.sales} /></td>
-        <td className={tdApp}><Yoy v={m.apparel.salesYoy} /></td>
-        <td className={tdApp}><Num v={m.apparel.ending} /></td>
-        <td className={tdApp}><Yoy v={m.apparel.endingYoy} /></td>
-        <td className={tdApp}>
+        <td className={`${tdApp} ${borderB}`} />
+        <td className={`${tdAppBase} ${borderB}`}><Num v={m.apparel.base} /></td>
+        <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.purchase} /></td>
+        <td className={`${tdAppPurchaseYoy} ${borderB}`}><Yoy v={m.apparel.purchaseYoy} /></td>
+        <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.sales} /></td>
+        <td className={`${tdAppSalesYoy} ${borderB}`}><Yoy v={m.apparel.salesYoy} /></td>
+        <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.ending} /></td>
+        <td className={`${tdApp} ${borderB}`}><Yoy v={m.apparel.endingYoy} /></td>
+        <td className={`${tdAppSellThrough} ${borderB}`}>
           {m.apparel.sellThrough !== null ? `${m.apparel.sellThrough.toFixed(1)}%` : "—"}
         </td>
-        <td className={tdAccFirst}>—</td>
-        <td className={tdAcc}><Num v={m.acc.base} /></td>
-        <td className={tdAcc}><Num v={m.acc.purchase} /></td>
-        <td className={tdAcc}><Yoy v={m.acc.purchaseYoy} /></td>
-        <td className={tdAcc}><Num v={m.acc.sales} /></td>
-        <td className={tdAcc}><Yoy v={m.acc.salesYoy} /></td>
-        <td className={tdAcc}><Num v={m.acc.ending} /></td>
-        <td className={tdAcc}><Yoy v={m.acc.endingYoy} /></td>
-        <td className={`${tdAcc} ${m.acc.weeks !== null ? (m.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
+        <td className={`${tdAccFirst} ${borderB}`} />
+        <td className={`${tdAccBase} ${borderB}`}><Num v={m.acc.base} /></td>
+        <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.purchase} /></td>
+        <td className={`${tdAccPurchaseYoy} ${borderB}`}><Yoy v={m.acc.purchaseYoy} /></td>
+        <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.sales} /></td>
+        <td className={`${tdAccSalesYoy} ${borderB}`}><Yoy v={m.acc.salesYoy} /></td>
+        <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.ending} /></td>
+        <td className={`${tdAcc} ${borderB}`}><Yoy v={m.acc.endingYoy} /></td>
+        <td className={`${tdAccLast} ${borderB} ${m.acc.weeks !== null ? (m.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
           {m.acc.weeks !== null ? `${m.acc.weeks.toFixed(1)}주` : "—"}
         </td>
       </tr>
@@ -763,8 +1070,19 @@ function DealerRow({
           accItemsDetail={m.accItemsDetail}
           yearGroupOpen={yearGroupOpen}
           onToggleYearGroup={onToggleYearGroup}
-          td={td}
-          tdL={tdL}
+          year={year}
+          tdSubApp={tdSubApp}
+          tdSubAppBase={tdSubAppBase}
+          tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
+          tdSubAppSalesYoy={tdSubAppSalesYoy}
+          tdSubAppSellThrough={tdSubAppSellThrough}
+          tdSubAcc={tdSubAcc}
+          tdSubAccBase={tdSubAccBase}
+          tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
+          tdSubAccSalesYoy={tdSubAccSalesYoy}
+          tdSubAccLast={tdSubAccLast}
+          tdLSub={tdLSub}
+          tdLSubWithRight={tdLSubWithRight}
         />
       )}
     </>
