@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { StockData, InboundData, RetailData, AppOtbData } from "../lib/types";
+import { StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap } from "../lib/types";
 import StockView, { type AccountNameMap } from "./components/StockView";
 import PLView from "./components/PLView";
 import { TableIcon, ChartBarIcon } from "./components/Icons";
@@ -16,6 +16,9 @@ interface Props {
   retailPos2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
+  cogsRateMap?: Record<string, Record<string, number>>;
+  storeRetailMap?: StoreRetailMap;
+  storeDirectCostMap?: StoreDirectCostMap;
 }
 
 const TABS = [
@@ -35,6 +38,9 @@ export default function DashboardClient({
   retailPos2025,
   appOtb2026,
   accountNameMap = {},
+  cogsRateMap = {},
+  storeRetailMap = {},
+  storeDirectCostMap = {},
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
 
@@ -80,7 +86,14 @@ export default function DashboardClient({
             accountNameMap={accountNameMap}
           />
         )}
-        {activeTab === "pl" && <PLView />}
+        {activeTab === "pl" && (
+          <PLView
+            cogsRateMap={cogsRateMap}
+            accountNameMap={accountNameMap}
+            storeRetailMap={storeRetailMap}
+            storeDirectCostMap={storeDirectCostMap}
+          />
+        )}
       </div>
     </div>
   );
