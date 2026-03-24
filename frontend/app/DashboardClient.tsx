@@ -12,6 +12,8 @@ interface Props {
   inbound2025: InboundData | null;
   inbound2026: InboundData | null;
   retail2026: RetailData | null;
+  retailPlan2026: RetailData | null;
+  retailPos2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
 }
@@ -23,7 +25,17 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export default function DashboardClient({ data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026, accountNameMap = {} }: Props) {
+export default function DashboardClient({
+  data2025,
+  data2026,
+  inbound2025,
+  inbound2026,
+  retail2026,
+  retailPlan2026,
+  retailPos2025,
+  appOtb2026,
+  accountNameMap = {},
+}: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
 
   return (
@@ -62,6 +74,8 @@ export default function DashboardClient({ data2025, data2026, inbound2025, inbou
             inbound2025={inbound2025}
             inbound2026={inbound2026}
             retail2026={retail2026}
+            retailPlan2026={retailPlan2026}
+            retailPos2025={retailPos2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
           />

@@ -88,6 +88,8 @@ export default async function Home() {
   const inbound2025 = loadJson<InboundData>("inbound_2025.json");
   const inbound2026 = loadJson<InboundData>("inbound_2026.json");
   const retail2026 = loadJson<RetailData>("retail_2026.json");
+  const retailPlan2026 = loadJson<RetailData>("retail_plan_2026.json");
+  const retailPos2025 = loadJson<RetailData>("retail_pos_2025.json");
   const appOtb2026 = loadJson<AppOtbData>("app_otb_2026.json");
   const accountNameMap = loadAccountNameMap();
 
@@ -101,6 +103,8 @@ export default async function Home() {
             inbound2025={inbound2025}
             inbound2026={inbound2026}
             retail2026={retail2026}
+            retailPlan2026={retailPlan2026}
+            retailPos2025={retailPos2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
           />

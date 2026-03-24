@@ -19,6 +19,7 @@ import InboundTable from "./InboundTable";
 import RetailTable from "./RetailTable";
 import DealerDetailTable from "./DealerDetailTable";
 import AppOtbTable from "./AppOtbTable";
+import RetailPlan2026Table from "./RetailPlan2026Table";
 import { fmtAmt } from "../../lib/utils";
 import { DEFAULT_TARGET_WEEKS } from "../../lib/dealerMetrics";
 
@@ -30,6 +31,8 @@ interface Props {
   inbound2025: InboundData | null;
   inbound2026: InboundData | null;
   retail2026: RetailData | null;
+  retailPlan2026: RetailData | null;
+  retailPos2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
 }
@@ -314,6 +317,36 @@ function SectionHeader({
   );
 }
 
+function RetailPlanSectionHeader() {
+  return (
+    <div className="mb-4 flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex flex-wrap items-center gap-3 text-sm font-semibold tracking-[-0.02em] text-slate-700">
+          <span>2026년 대리상 리테일 Plan</span>
+          <span className="text-slate-400">|</span>
+          <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-slate-500">
+            천위안
+          </span>
+          <span className="text-slate-400">|</span>
+          <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">
+            python scripts/preprocess_retail_plan_2026.py
+          </code>
+          <span className="text-slate-400">|</span>
+          <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">
+            python scripts/preprocess_retail_pos_2025.py
+          </code>
+        </h2>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+          2026 Plan · 25년 리테일 비교
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-500">
+        입력: 2026_monthlyretail.csv (실판) · Tag표시=실판/(1-할인율) · retail_pos_2025: tag/sale (dw_sale) · 역산기준YOY=26/25역산*100% · POS기준YOY=26/25POS(Tag)*100%
+      </p>
+    </div>
+  );
+}
+
 function RetailSectionHeader({ title, unit, range, activeYear }: { title: string; unit: string; range: string; activeYear: string }) {
   const is2026 = activeYear === "2026";
   return (
@@ -350,7 +383,15 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
 
 // ─── 메인 컴포넌트 ────────────────────────────
 export default function StockView({
-  data2025, data2026, inbound2025, inbound2026, retail2026, appOtb2026, accountNameMap = {},
+  data2025,
+  data2026,
+  inbound2025,
+  inbound2026,
+  retail2026,
+  retailPlan2026,
+  retailPos2025,
+  appOtb2026,
+  accountNameMap = {},
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
@@ -537,6 +578,29 @@ export default function StockView({
             <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
               OTB 데이터 없음 —&nbsp;
               <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">python scripts/preprocess_app_otb.py</code>
+              &nbsp;실행 후 새로고침
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeYear === "2026" && (
+        <div className="mb-10">
+          <RetailPlanSectionHeader />
+          {retailPlan2026 ? (
+            <RetailPlan2026Table
+              plan={retailPlan2026}
+              retail2025={retail2025calc}
+              retailPos2025={retailPos2025}
+              brand={selectedBrand}
+              accountNameMap={accountNameMap}
+            />
+          ) : (
+            <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
+              Plan 데이터 없음 —&nbsp;
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
+                python scripts/preprocess_retail_plan_2026.py
+              </code>
               &nbsp;실행 후 새로고침
             </div>
           )}
