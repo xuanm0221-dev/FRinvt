@@ -145,7 +145,7 @@ function DirectCostCells({ salary, bonus, headcount, insurance, rent, depr, dire
 }
 
 // ─── 공통 테이블 헤더 ─────────────────────────────────────────────
-// 컬럼 수: 1(이름)+2(매출)+2(원가)+1(매출이익)+13(직접비)+1(영업이익) = 20
+// 컬럼 수: 1(이름)+2(매출)+2(원가)+1(매출이익)+13(직접비)+2(영업이익+이익률) = 21
 // [인원수][평균인건비]는 직접비합계에 미포함 → 회색 배경으로 구분
 const REF_COL = "bg-slate-100 text-slate-500"; // 참조용 컬럼 스타일
 
@@ -166,7 +166,7 @@ function PLTableHead({ firstColLabel }: { firstColLabel: string }) {
         <th colSpan={13} className="px-3 py-1.5 text-center text-[10px] font-semibold text-slate-400 border-l border-slate-200">
           직접비
         </th>
-        <th className="px-3 py-1.5 text-center text-[10px] font-semibold text-blue-700 border-l border-slate-300">
+        <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-semibold text-blue-700 border-l border-slate-300">
           영업이익
         </th>
       </tr>
@@ -194,6 +194,7 @@ function PLTableHead({ firstColLabel }: { firstColLabel: string }) {
         <th className="px-3 py-2.5 text-xs font-medium text-slate-300 whitespace-nowrap">ㄴ지급수수료</th>
         <th className="px-3 py-2.5 text-xs font-medium text-slate-300 whitespace-nowrap">ㄴothers</th>
         <th className="px-3 py-2.5 text-xs font-bold text-blue-700 whitespace-nowrap border-l border-slate-300">영업이익</th>
+        <th className="px-3 py-2.5 text-xs font-bold text-blue-700 whitespace-nowrap">영업이익률</th>
       </tr>
     </thead>
   );
@@ -240,6 +241,9 @@ function TotalRow({ totals }: TotalRowProps) {
       <td className="px-3 py-2.5 text-slate-300">—</td>
       <td className={`px-3 py-2.5 font-bold border-l border-slate-300 ${totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"}`}>
         {fmt(totals.operatingProfit)}
+      </td>
+      <td className={`px-3 py-2.5 font-bold ${totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"}`}>
+        {totals.retail > 0 ? fmtRate(totals.operatingProfit * 1.13 / totals.retail) : "—"}
       </td>
     </tr>
   );
@@ -392,6 +396,7 @@ function StoreModal({ dealer, brand, selectedMonth, storeRetailMap, storeDirectC
           <table className="min-w-full text-right text-xs">
             <PLTableHead firstColLabel="매장코드 · 매장명" />
             <tbody className="divide-y divide-slate-100">
+              {storeRows.length > 0 && <TotalRow totals={storeTotals} />}
               {storeRows.map((row, i) => (
                 <tr key={row.storeCode} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
                   <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left whitespace-nowrap">
@@ -415,12 +420,14 @@ function StoreModal({ dealer, brand, selectedMonth, storeRetailMap, storeDirectC
                   <td className={`px-3 py-2 font-semibold border-l border-slate-300 ${row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"}`}>
                     {fmt(row.operatingProfit)}
                   </td>
+                  <td className={`px-3 py-2 font-semibold ${row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                    {row.retail > 0 ? fmtRate(row.operatingProfit * 1.13 / row.retail) : "—"}
+                  </td>
                 </tr>
               ))}
-              {storeRows.length > 0 && <TotalRow totals={storeTotals} />}
               {storeRows.length === 0 && (
                 <tr>
-                  <td colSpan={19} className="py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={21} className="py-10 text-center text-slate-400 text-sm">
                     매장 데이터가 없습니다.
                   </td>
                 </tr>
@@ -644,6 +651,9 @@ export default function PLView({
                   />
                   <td className={`px-3 py-2 font-semibold border-l border-slate-300 ${row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"}`}>
                     {fmt(row.operatingProfit)}
+                  </td>
+                  <td className={`px-3 py-2 font-semibold ${row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                    {row.retail > 0 ? fmtRate(row.operatingProfit * 1.13 / row.retail) : "—"}
                   </td>
                 </tr>
               ))}
