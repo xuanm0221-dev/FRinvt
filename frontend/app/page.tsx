@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import DashboardClient from "./DashboardClient";
-import { StockData, InboundData, RetailData, AppOtbData, BRAND_ORDER, StoreRetailMap, StoreDirectCostMap, StoreDirectCost } from "../lib/types";
+import { StockData, InboundData, RetailData, AppOtbData, BRAND_ORDER, StoreRetailMap, StoreDirectCostMap } from "../lib/types";
 import path from "path";
 import fs from "fs";
 
@@ -124,6 +124,7 @@ function parseNum(s: string): number {
  *  0 account_id | 3 store_cd | 5 매장인원수 | 6 임차료
  *  8 인테리어   | 9 평균급여  | 10 보험율   | 11 bonus(매출기준%)
  * 15 Open Month | 16 Amortization end Month | 17 Closed Month
+ * Store Area (㎡)
  */
 function loadStoreDirectCostMap(): StoreDirectCostMap {
   const candidates = [
@@ -153,6 +154,11 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
   const openIdx  = idxOf("Open Month");
   const amortIdx = idxOf("Amortization end Month");
   const closedIdx = idxOf("Closed Month");
+  const storeAreaHeaderIdx = idxOf("Store Area");
+  const areaIdx =
+    storeAreaHeaderIdx >= 0
+      ? storeAreaHeaderIdx
+      : headers.findIndex((h) => h.toLowerCase().includes("store area"));
 
   // 한글 컬럼: findIndex로 시도, 실패 시 고정 인덱스
   const hcIdx    = fi("인원", 5);       // 매장인원수
@@ -161,6 +167,11 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
   const salIdx   = fi("급여", 9);       // 평균급여
   const insIdx   = fi("보험", 10);      // 보험율
   const bonusIdx = fi("bonus", 11);    // bonus(매출기준%)
+  const commissionIdx = idxOf("수수료율");
+  const storeTypeIdx = idxOf("Store Type");
+  const tradeZoneIdx = headers.findIndex(
+    (h) => h.trim().toLowerCase() === "trade zone" || h.includes("Trade Zone")
+  );
 
   if (storeIdx < 0 || accIdx < 0) return {};
 
@@ -175,6 +186,9 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
     const amortRaw  = parseInt(cols[amortIdx]?.trim()  ?? "0", 10);
     const closedRaw = parseInt(cols[closedIdx]?.trim() ?? "0", 10);
 
+    const areaVal =
+      areaIdx >= 0 ? parseNum(cols[areaIdx] ?? "0") : 0;
+
     result[storeCode] = {
       storeCode,
       accountId,
@@ -184,9 +198,13 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
       interiorCost:  parseNum(cols[interIdx] ?? "0"),
       bonusRate:     parseNum(cols[bonusIdx] ?? "0"),
       insuranceRate: parseNum(cols[insIdx]   ?? "0"),
+      commissionRate: commissionIdx >= 0 ? parseNum(cols[commissionIdx] ?? "0") : 0,
       openMonth:     isNaN(openRaw)   ? 0 : openRaw,
       amortEndMonth: isNaN(amortRaw)  ? 0 : amortRaw,
       closedMonth:   closedRaw > 0   ? closedRaw : null,
+      storeAreaM2:   areaVal,
+      storeType:     storeTypeIdx >= 0 ? (cols[storeTypeIdx]?.trim() ?? "") : "",
+      tradeZone:     tradeZoneIdx >= 0 ? (cols[tradeZoneIdx]?.trim() ?? "") : "",
     };
   }
   return result;
@@ -283,6 +301,15 @@ export default async function Home() {
   const cogsRateMap = loadCogsRateMap();
   const storeRetailMap = loadStoreRetailMap();
   const storeDirectCostMap = loadStoreDirectCostMap();
+  const retailYoy2024Raw = loadJson<{ year: number; stores: Record<string, Record<string, number>> }>("retail_yoy_2024.json");
+  const retailYoy2024Map: Record<string, Record<number, number>> | null = retailYoy2024Raw
+    ? Object.fromEntries(
+        Object.entries(retailYoy2024Raw.stores).map(([code, months]) => [
+          code,
+          Object.fromEntries(Object.entries(months).map(([m, v]) => [Number(m), v])),
+        ])
+      )
+    : null;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
@@ -301,6 +328,7 @@ export default async function Home() {
             cogsRateMap={cogsRateMap}
             storeRetailMap={storeRetailMap}
             storeDirectCostMap={storeDirectCostMap}
+            retailYoy2024Map={retailYoy2024Map}
           />
         </Suspense>
       </main>

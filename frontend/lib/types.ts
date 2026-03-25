@@ -81,13 +81,17 @@ export interface StoreDirectCost {
   accountId: string;       // account_id
   headcount: number;       // 매장인원수
   avgSalary: number;       // 평균급여 (월)
-  rent: number;            // 임차료 (월)
-  interiorCost: number;    // 인테리어
+  rent: number;            // 임차료 (월), CSV — 고정임차 산출 시 /1.05
+  interiorCost: number;    // 인테리어 (메인: 총액÷개월 / 모달: 월 감가액)
   bonusRate: number;       // bonus(매출기준%) decimal
   insuranceRate: number;   // 보험율 decimal
+  commissionRate: number;  // 수수료율 decimal (변동임차)
   openMonth: number;       // e.g. 202601
   amortEndMonth: number;   // e.g. 202801
   closedMonth: number | null;
+  storeAreaM2: number;     // Store Area (㎡), FR수익구조.csv
+  storeType: string;
+  tradeZone: string;
 }
 /** store_cd → StoreDirectCost */
 export type StoreDirectCostMap = Record<string, StoreDirectCost>;

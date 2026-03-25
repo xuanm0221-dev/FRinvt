@@ -7,6 +7,10 @@ FR 재고자산 - 재고잔액 전처리 스크립트
 
 결과: frontend/public/data/stock_{year}.json
 
+로직 (2025·2026 동일):
+  - LEFT JOIN DB_PRDT: 상품마스터 미매칭 시에도 행 누락 없음 (COALESCE로 기타 처리)
+  - 전년 12월 = 기초재고, 당해 월별 = 실적월
+
 기초재고 전략:
   --full / 신규 파일 생성 시: 전년 12월 데이터를 메인 쿼리에 포함하여 조회
     → 카테고리별(대분류/중분류) base_stock 자동 산출
@@ -108,9 +112,9 @@ def get_incremental_range(output_dir: Path, year: int) -> tuple:
 
 
 def _apply_category_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """대분류/중분류 컬럼 추가"""
+    """대분류/중분류 컬럼 추가. 상품마스터 미매칭 시 parent/prdt_kind_nm이 NaN → 기타로 처리"""
     df = df.copy()
-    df["대분류"] = df["parent_prdt_kind_nm"].fillna("기타")
+    df["대분류"] = df["parent_prdt_kind_nm"].fillna("기타").replace("", "기타")
     df["중분류"] = df.apply(
         lambda r: sesn_to_midclass(r.get("sesn", ""))
         if r["대분류"] == "의류"
@@ -301,7 +305,9 @@ def get_connection():
     )
 
 
-# part_cd 기준 DB_PRDT 조인으로 대분류/중분류 정보 획득
+# 재고잔액 조회 (2025·2026 동일 로직)
+# - LEFT JOIN DB_PRDT: 상품마스터 미매칭(part_cd 없음) 시에도 행 누락 없음
+# - COALESCE로 NULL → '기타'/'Acc_etc' 처리하여 전체 재고 합계에 포함
 QUERY = """
 SELECT
     s.yymm,
