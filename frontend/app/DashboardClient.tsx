@@ -19,7 +19,7 @@ interface Props {
   cogsRateMap?: Record<string, Record<string, number>>;
   storeRetailMap?: StoreRetailMap;
   storeDirectCostMap?: StoreDirectCostMap;
-  retailYoy2024Map?: Record<string, Record<number, number>> | null;
+  retailYoy2025Map?: Record<string, Record<number, number>> | null;
 }
 
 const TABS = [
@@ -42,7 +42,7 @@ export default function DashboardClient({
   cogsRateMap = {},
   storeRetailMap = {},
   storeDirectCostMap = {},
-  retailYoy2024Map = null,
+  retailYoy2025Map = null,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
 
@@ -94,7 +94,7 @@ export default function DashboardClient({
             accountNameMap={accountNameMap}
             storeRetailMap={storeRetailMap}
             storeDirectCostMap={storeDirectCostMap}
-            retailYoy2024Map={retailYoy2024Map}
+            retailYoy2025Map={retailYoy2025Map}
           />
         )}
       </div>

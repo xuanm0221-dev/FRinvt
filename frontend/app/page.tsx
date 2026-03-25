@@ -301,10 +301,10 @@ export default async function Home() {
   const cogsRateMap = loadCogsRateMap();
   const storeRetailMap = loadStoreRetailMap();
   const storeDirectCostMap = loadStoreDirectCostMap();
-  const retailYoy2024Raw = loadJson<{ year: number; stores: Record<string, Record<string, number>> }>("retail_yoy_2024.json");
-  const retailYoy2024Map: Record<string, Record<number, number>> | null = retailYoy2024Raw
+  const retailYoy2025Raw = loadJson<{ year: number; stores: Record<string, Record<string, number>> }>("retail_yoy_2025.json");
+  const retailYoy2025Map: Record<string, Record<number, number>> | null = retailYoy2025Raw
     ? Object.fromEntries(
-        Object.entries(retailYoy2024Raw.stores).map(([code, months]) => [
+        Object.entries(retailYoy2025Raw.stores).map(([code, months]) => [
           code,
           Object.fromEntries(Object.entries(months).map(([m, v]) => [Number(m), v])),
         ])
@@ -328,7 +328,7 @@ export default async function Home() {
             cogsRateMap={cogsRateMap}
             storeRetailMap={storeRetailMap}
             storeDirectCostMap={storeDirectCostMap}
-            retailYoy2024Map={retailYoy2024Map}
+            retailYoy2025Map={retailYoy2025Map}
           />
         </Suspense>
       </main>

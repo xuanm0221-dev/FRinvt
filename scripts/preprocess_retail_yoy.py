@@ -1,15 +1,15 @@
 """
-FR 전년(2024) 리테일 매출 전처리 스크립트
+FR 전년(2025) 리테일 매출 전처리 스크립트
 
-chn.dw_sale에서 2024년 브랜드별 매장별 월별 SALE_AMT를 집계하여
-frontend/public/data/retail_yoy_2024.json 으로 저장합니다.
+chn.dw_sale에서 2025년 브랜드별 매장별 월별 SALE_AMT를 집계하여
+frontend/public/data/retail_yoy_2025.json 으로 저장합니다.
 
 실행:
   python scripts/preprocess_retail_yoy.py
 
 출력 구조:
   {
-    "year": 2024,
+    "year": 2025,
     "stores": {
       "CN003": { "1": 44723737, "2": 20854420, ..., "12": 30000000 },
       ...
@@ -26,7 +26,7 @@ from pathlib import Path
 env_path = Path(__file__).parent.parent / ".env.local"
 load_dotenv(dotenv_path=env_path)
 
-OUT_PATH = Path(__file__).parent.parent / "frontend" / "public" / "data" / "retail_yoy_2024.json"
+OUT_PATH = Path(__file__).parent.parent / "frontend" / "public" / "data" / "retail_yoy_2025.json"
 
 QUERY = """
 SELECT
@@ -34,7 +34,7 @@ SELECT
     MONTH(SALE_DT) AS mo,
     SUM(SALE_AMT)  AS retail
 FROM chn.dw_sale
-WHERE YEAR(SALE_DT) = 2024
+WHERE YEAR(SALE_DT) = 2025
   AND BRD_CD IN ('M', 'I', 'X')
   AND COALESCE(RET_YN, FALSE) = FALSE
 GROUP BY 1, 2
@@ -59,7 +59,7 @@ def main():
     conn = get_connection()
     cur = conn.cursor()
 
-    print("2024년 리테일 매출 조회 중...")
+    print("2025년 리테일 매출 조회 중...")
     cur.execute(QUERY)
     rows = cur.fetchall()
     cur.close()
@@ -74,7 +74,7 @@ def main():
             stores[key] = {}
         stores[key][str(int(mo))] = round(float(retail), 2)
 
-    result = {"year": 2024, "stores": stores}
+    result = {"year": 2025, "stores": stores}
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as f:

@@ -15,7 +15,7 @@ interface Props {
   accountNameMap: AccountNameMap;
   storeRetailMap?: StoreRetailMap;
   storeDirectCostMap?: StoreDirectCostMap;
-  retailYoy2024Map?: Record<string, Record<number, number>> | null;
+  retailYoy2025Map?: Record<string, Record<number, number>> | null;
 }
 
 type MonthOption = "annual" | number;
@@ -176,7 +176,7 @@ function buildPlKpiLegendItems(ctx: PlKpiLegendCtx): ReactNode[] {
       <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">PL_CALC</code> 상수 참조.
     </li>,
     <li key="script" className="text-slate-500 pt-0.5 border-t border-slate-200/80">
-      <span className="font-semibold text-slate-600">전년(2024) 리테일 데이터 갱신</span> — 아래 명령어 실행 후
+      <span className="font-semibold text-slate-600">전년(2025) 리테일 데이터 갱신</span> — 아래 명령어 실행 후
       새로고침:
       <code className="block mt-1 select-all rounded bg-slate-100 px-2 py-1 text-[10px] font-mono text-slate-700">
         python scripts/preprocess_retail_yoy.py
@@ -215,7 +215,7 @@ function PlCalcLogicModal({
       role="presentation"
     >
       <div
-        className="relative w-full max-w-lg max-h-[min(85vh,640px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
+        className="relative w-full max-w-3xl max-h-[min(85vh,640px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -748,7 +748,7 @@ interface StoreModalProps {
   storeDirectCostMap: StoreDirectCostMap;
   cogsRate: number;
   onClose: () => void;
-  retail2024Map?: Record<string, Record<number, number>> | null;
+  retail2025Map?: Record<string, Record<number, number>> | null;
 }
 
 function StoreModal({
@@ -759,7 +759,7 @@ function StoreModal({
   storeDirectCostMap,
   cogsRate,
   onClose,
-  retail2024Map,
+  retail2025Map,
 }: StoreModalProps) {
   const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
@@ -952,16 +952,16 @@ function StoreModal({
       ? ((selectedRow.retail / selectedRow.headcount) / 1000).toFixed(2)
       : "";
 
-  const retail2024 = selectedRow && retail2024Map
+  const retail2025 = selectedRow && retail2025Map
     ? selectedMonth === "annual"
-      ? MONTHS.reduce((s, m) => s + (retail2024Map[selectedRow.storeCode]?.[m] ?? 0), 0)
-      : (retail2024Map[selectedRow.storeCode]?.[selectedMonth as number] ?? 0)
+      ? MONTHS.reduce((s, m) => s + (retail2025Map[selectedRow.storeCode]?.[m] ?? 0), 0)
+      : (retail2025Map[selectedRow.storeCode]?.[selectedMonth as number] ?? 0)
     : 0;
-  const yoy = retail2024 > 0 && selectedRow
-    ? (selectedRow.retail - retail2024) / retail2024
+  const yoy = retail2025 > 0 && selectedRow
+    ? (selectedRow.retail - retail2025) / retail2025
     : null;
-  const yoyPct = retail2024 > 0 && selectedRow
-    ? (selectedRow.retail / retail2024) * 100
+  const yoyPct = retail2025 > 0 && selectedRow
+    ? (selectedRow.retail / retail2025) * 100
     : null;
 
   return (
@@ -1020,7 +1020,7 @@ function StoreModal({
                     <span className="whitespace-nowrap">
                       {fmt(selectedRow.retail)}K{" "}
                       <span className="text-[11px] font-medium text-slate-500">
-                        (전년 {fmt(retail2024)}K,{" "}
+                        (전년 {fmt(retail2025)}K,{" "}
                         <span className={yoyPct >= 100 ? "text-emerald-600" : "text-red-500"}>
                           {yoyPct.toFixed(1)}%
                         </span>
@@ -1151,7 +1151,7 @@ export default function PLView({
   accountNameMap,
   storeRetailMap = {},
   storeDirectCostMap = {},
-  retailYoy2024Map = null,
+  retailYoy2025Map = null,
 }: Props) {
   const [selectedMonth, setSelectedMonth] = useState<MonthOption>("annual");
   const [selectedBrand, setSelectedBrand] = useState<string>("");
@@ -1478,7 +1478,7 @@ export default function PLView({
           storeDirectCostMap={storeDirectCostMap}
           cogsRate={modalDealer.cogsRate}
           onClose={closeModal}
-          retail2024Map={retailYoy2024Map}
+          retail2025Map={retailYoy2025Map}
         />
       )}
 
