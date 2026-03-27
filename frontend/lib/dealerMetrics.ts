@@ -14,6 +14,10 @@ import {
 
 const OTB_SEASONS = new Set(["26S", "26F", "27S", "27F"]);
 const OTB_SEASONS_ARR = ["26S", "26F", "27S", "27F"] as const;
+
+/** 연차별 고정 sellthrough: 1년차=70%, 2년차=85%, 과시즌=100% */
+const ST_YEAR_GROUP: Record<string, number> = { "1년차": 70, "2년차": 85 };
+const ST_OLD_PCT = 100;
 export const ACC_ORDER = ["신발", "모자", "가방", "기타"] as const;
 export const DEFAULT_TARGET_WEEKS: Record<string, number> = {
   신발: 30,
@@ -433,10 +437,10 @@ export function computeAccountMetrics(
   }
 
   const useApparelFormula = is2026;
-  const apparelSales = useApparelFormula
-    ? Math.round((rows.apparel.base + apparelPurchase) * (sellThroughPct / 100))
-    : rows.apparel.sales;
-  const apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
+  // apparelSales / apparelEnding 는 시즌별 계산 후 bottom-up 합산으로 결정됨
+  // (선언만 해두고 아래 루프 완료 후 할당)
+  let apparelSales = 0;
+  let apparelEnding = 0;
 
   const hasPrev = is2026 && stockPrev && retailPrev;
   const prevMerged = hasPrev ? mergeAccounts(brand, stockPrev, retailPrev, inboundPrev) : [];
@@ -456,7 +460,7 @@ export function computeAccountMetrics(
   if (prevRows && inboundPrev) {
     prevApparelBase = prevRows.apparel.base;
     prevApparelPurchase = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", null);
-    prevApparelSales = Math.round((prevApparelBase + prevApparelPurchase) * (sellThroughPct / 100));
+    prevApparelSales = prevRows.apparel.sales;
     prevApparelEnding = prevApparelBase + prevApparelPurchase - prevApparelSales;
     prevAccSales = prevRows.acc.sales;
     for (const { item, data } of prevRows.accItems) {
@@ -480,23 +484,22 @@ export function computeAccountMetrics(
   const prevBySeason = new Map<string, { purchase: number; sales: number; ending: number }>();
   const prevByAccItem = new Map<string, { purchase: number; sales: number; ending: number }>();
   if (prevRows && inboundPrev && hasPrev) {
-    const addPrevSeason = (label: string, base: number, purch: number) => {
-      const sales = Math.round((base + purch) * (sellThroughPct / 100));
-      prevBySeason.set(label, { purchase: purch, sales, ending: base + purch - sales });
+    const addPrevSeason = (label: string, base: number, purch: number, actualSales: number) => {
+      prevBySeason.set(label, { purchase: purch, sales: actualSales, ending: base + purch - actualSales });
     };
     for (const { season, data } of prevRows.apparelCurrent) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
-      addPrevSeason(season, data.base, purch);
+      addPrevSeason(season, data.base, purch, data.sales);
     }
     for (const grp of prevRows.apparelYearGroups) {
       for (const { season, data } of grp.seasons) {
         const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
-        addPrevSeason(season, data.base, purch);
+        addPrevSeason(season, data.base, purch, data.sales);
       }
     }
     if (prevRows.apparelOld) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", "과시즌");
-      addPrevSeason("과시즌", prevRows.apparelOld.base, purch);
+      addPrevSeason("과시즌", prevRows.apparelOld.base, purch, prevRows.apparelOld.sales);
     }
     for (const { item, data } of prevRows.accItems) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "ACC", item);
@@ -557,13 +560,14 @@ export function computeAccountMetrics(
   }
   const apparelYearGroups: ApparelYearGroupDetail[] = [];
   for (const grp of rows.apparelYearGroups) {
+    const grpSt = ST_YEAR_GROUP[grp.label] ?? sellThroughPct;
     let grpPurchase = 0;
     const seasons: ApparelSeasonDetail[] = [];
     for (const { season, data } of grp.seasons) {
       const p = canCalcOtb ? sesPurchase(season) : 0;
       const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
       grpPurchase += purch;
-      const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
+      const sales = useApparelFormula ? Math.round((data.base + purch) * (grpSt / 100)) : data.sales;
       const ending = data.base + purch - sales;
       const prev = prevBySeason.get(prevSeason(season));
       seasons.push({
@@ -578,7 +582,7 @@ export function computeAccountMetrics(
         endingYoy: prev ? yoy(ending, prev.ending) : null,
       });
     }
-    const grpSales = useApparelFormula ? Math.round((grp.data.base + grpPurchase) * (sellThroughPct / 100)) : grp.data.sales;
+    const grpSales = useApparelFormula ? Math.round((grp.data.base + grpPurchase) * (grpSt / 100)) : grp.data.sales;
     const grpEnding = grp.data.base + grpPurchase - grpSales;
     const grpPrev = grp.seasons.reduce(
       (a, s) => {
@@ -611,7 +615,7 @@ export function computeAccountMetrics(
   let apparelOld: ApparelSeasonDetail | null = null;
   if (rows.apparelOld) {
     const oldPurch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", "과시즌") : 0;
-    const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (sellThroughPct / 100)) : rows.apparelOld.sales;
+    const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (ST_OLD_PCT / 100)) : rows.apparelOld.sales;
     const ending = rows.apparelOld.base + oldPurch - oldSales;
     const oldPrev = prevBySeason.get("과시즌");
     apparelOld = {
@@ -625,6 +629,18 @@ export function computeAccountMetrics(
       salesYoy: oldPrev ? yoy(oldSales, oldPrev.sales) : null,
       endingYoy: oldPrev ? yoy(ending, oldPrev.ending) : null,
     };
+  }
+
+  // bottom-up: 시즌별 계산값의 합산으로 전체 의류 판매/기말재고 산출
+  if (useApparelFormula) {
+    apparelSales =
+      apparelCurrent.reduce((s, x) => s + x.sales, 0) +
+      apparelYearGroups.reduce((s, grp) => s + grp.data.sales, 0) +
+      (apparelOld?.sales ?? 0);
+    apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
+  } else {
+    apparelSales = rows.apparel.sales;
+    apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
   }
 
   const accItemsDetail: AccItemDetail[] = [];
@@ -661,7 +677,7 @@ export function computeAccountMetrics(
   const accWeeks = rows.acc.sales > 0 ? accEnding / ((rows.acc.sales / 365) * 7) : null;
   const sellThrough =
     rows.apparel.base + apparelPurchase > 0
-      ? (useApparelFormula ? sellThroughPct : (apparelSales / (rows.apparel.base + apparelPurchase)) * 100)
+      ? (apparelSales / (rows.apparel.base + apparelPurchase)) * 100
       : null;
 
   return {

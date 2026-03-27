@@ -482,7 +482,7 @@ export default function DealerDetailTable({
 
   const th = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r border-slate-200";
   const thNoRight = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r-0";
-  const thL = `${th} text-left sticky left-0 bg-white z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] border-r-2 border-slate-200`;
+  const thL = `${th} text-left sticky left-0 bg-white z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] border-r-[6px] border-r-slate-300`;
   const thLast = "px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-slate-500 whitespace-nowrap border-b border-slate-200 border-r-0";
   const td = "px-2 py-1.5 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap border-b border-slate-200";
   const tdDottedRight = "border-r border-slate-200 [border-right-style:dashed]";
@@ -491,7 +491,7 @@ export default function DealerDetailTable({
   const tdAppBase = `${tdApp} ${tdDottedRight}`;
   const tdAppPurchaseYoy = `${tdApp} ${tdDottedRight}`;
   const tdAppSalesYoy = `${tdApp} ${tdDottedRight}`;
-  const tdAppSellThrough = `${tdApp} border-r-2 border-slate-200`;
+  const tdAppSellThrough = `${tdApp} border-r-[6px] border-r-slate-300`;
   const tdAcc = td;
   const tdAccNoRight = tdAcc;
   const tdAccBase = `${tdAcc} ${tdDottedRight}`;
@@ -505,17 +505,17 @@ export default function DealerDetailTable({
   const tdSubAppBase = `${tdSubApp} ${tdSubDottedRight}`;
   const tdSubAppPurchaseYoy = `${tdSubApp} ${tdSubDottedRight}`;
   const tdSubAppSalesYoy = `${tdSubApp} ${tdSubDottedRight}`;
-  const tdSubAppSellThrough = `${tdSubApp} border-r-2 border-slate-200 border-b-slate-100/30`;
+  const tdSubAppSellThrough = `${tdSubApp} border-r-[6px] border-r-slate-300 border-b-slate-100/30`;
   const tdSubAcc = tdSub;
   const tdSubAccBase = `${tdSubAcc} ${tdSubDottedRight}`;
   const tdSubAccPurchaseYoy = `${tdSubAcc} ${tdSubDottedRight}`;
   const tdSubAccSalesYoy = `${tdSubAcc} ${tdSubDottedRight}`;
   const tdSubAccLast = `${tdSubAcc} border-r-0`;
   const tdLSub = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-100/30 overflow-hidden";
-  const tdLSubWithRight = `${tdLSub} border-r-2 border-slate-200 border-b-slate-100/30`;
-  const tdLBase = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-2 border-slate-200 overflow-hidden sticky left-0 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]";
+  const tdLSubWithRight = `${tdLSub} border-r-[6px] border-r-slate-300 border-b-slate-100/30`;
+  const tdLBase = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-[6px] border-r-slate-300 overflow-hidden sticky left-0 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]";
   const tdL = `${tdLBase} bg-white`;
-  const tdLTotal = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-2 border-slate-200 overflow-hidden sticky left-0 bg-slate-100 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] font-semibold";
+  const tdLTotal = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-[6px] border-r-slate-300 overflow-hidden sticky left-0 bg-slate-100 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] font-semibold";
 
   // [name, 중분류(의류), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, SellThrough, 중분류(ACC), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, 재고주수]
   const COL_WIDTHS = [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62];
@@ -530,7 +530,7 @@ export default function DealerDetailTable({
       {year === "2026" && (
         <div className="sticky top-[120px] z-20 rounded-xl border border-slate-200/80 bg-white overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
-            <span className="text-xs text-white">리테일성장률</span>
+            <span className="text-xs text-white">리테일성장률(ACC만적용)</span>
             <input
               type="number"
               min={0}
@@ -565,6 +565,7 @@ export default function DealerDetailTable({
             ))}
             <span className="text-white/50">|</span>
             <span className="text-xs text-white">Sell through</span>
+            <span className="text-[10px] text-white/60">당시즌·차기시즌</span>
             <input
               type="number"
               min={0}
@@ -578,21 +579,25 @@ export default function DealerDetailTable({
               className="h-6 w-14 rounded border border-white/30 bg-white/10 px-1.5 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
             />
             <span className="text-xs text-white/80">%</span>
+            <span className="text-white/30 mx-1">·</span>
+            <span className="text-[10px] text-white/60">1년차 70% · 2년차 85% · 과시즌 100% 고정</span>
           </div>
-          <div className="border-b border-slate-200 bg-slate-50/40 px-4 py-2 text-[11px] text-slate-500">
-            ACC 계산 로직
-            <span className="mx-1.5 text-slate-300">·</span>
-            주판매 = 판매 ÷ 365 × 7
-            <span className="mx-1.5 text-slate-300">·</span>
-            기말 = 주판매 × 목표재고주수
-            <span className="mx-1.5 text-slate-300">·</span>
-            매입 = 기말 − 기초 + 판매
-            <span className="mx-2 text-slate-300">|</span>
-            의류 계산 로직
-            <span className="mx-1.5 text-slate-300">·</span>
+          <div className="border-b border-slate-200 bg-blue-50 px-4 py-2 text-[11px] text-blue-700">
+            <span className="font-semibold bg-blue-100 rounded px-1.5 py-0.5 mr-1">의류 계산 로직</span>
+            <span className="mx-1.5 text-blue-300">·</span>
+            매입 = OTB − 25년 누적입고
+            <span className="mx-1.5 text-blue-300">·</span>
             판매 = (기초+매입) × Sell through%
-            <span className="mx-1.5 text-slate-300">·</span>
+            <span className="mx-1.5 text-blue-300">·</span>
             기말재고 = 기초+매입−판매
+            <span className="mx-3 text-blue-200">|</span>
+            <span className="font-semibold bg-blue-100 rounded px-1.5 py-0.5 mr-1">ACC 계산 로직</span>
+            <span className="mx-1.5 text-blue-300">·</span>
+            주판매 = 판매 ÷ 365 × 7
+            <span className="mx-1.5 text-blue-300">·</span>
+            기말 = 주판매 × 목표재고주수
+            <span className="mx-1.5 text-blue-300">·</span>
+            매입 = 기말 − 기초 + 판매
           </div>
         </div>
       )}
@@ -606,10 +611,10 @@ export default function DealerDetailTable({
           {colgroup}
         <thead>
           <tr>
-            <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-2 border-slate-400 overflow-hidden sticky left-0 bg-[#1e3a5f] z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]" rowSpan={2}>
+            <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-[6px] border-slate-400 overflow-hidden sticky left-0 bg-[#1e3a5f] z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]" rowSpan={2}>
               (코드) 대리상명칭
             </th>
-            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r border-slate-400 bg-[#1e3a5f]" colSpan={9}>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-[6px] border-r-slate-400 bg-[#1e3a5f]" colSpan={9}>
               의류
             </th>
             <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-0 bg-[#1e3a5f]" colSpan={9}>
@@ -617,15 +622,16 @@ export default function DealerDetailTable({
             </th>
           </tr>
           <tr>
-            <th className={`${th} bg-sky-100 text-slate-700 border-l-2 border-slate-200`}>중분류</th>
+            <th className={`${th} bg-sky-100 text-slate-700 border-l-[6px] border-l-slate-300`}>중분류</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
-            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입(OTB-25년누적)</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
-            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매(역산)</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
-            <th className={`${th} bg-sky-100 text-slate-700`}>YOY</th>
-            <th className={`${th} bg-sky-100 text-slate-700 border-r-2 border-slate-200`}>Sell Through</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium tracking-wider bg-sky-100 text-slate-700 whitespace-nowrap border-b border-slate-200 border-r-[6px] border-r-slate-300">Sell Through</th>
+
             <th className={`${th} bg-sky-100 text-slate-700`}>중분류</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
@@ -633,7 +639,7 @@ export default function DealerDetailTable({
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
-            <th className={`${th} bg-sky-100 text-slate-700`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
             <th className={`${thLast} bg-sky-100 text-slate-700`}>재고주수</th>
           </tr>
         </thead>

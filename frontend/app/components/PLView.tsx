@@ -7,6 +7,7 @@ import {
   StoreRetailMap,
   StoreDirectCostMap,
   type StoreDirectCost,
+  type StoreRetailRow,
 } from "../../lib/types";
 import type { AccountNameMap } from "./StockView";
 
@@ -516,6 +517,12 @@ function PLTableHead({
     <thead className="sticky top-0 z-20">
       <tr className="bg-[#1e3a5f] border-b border-[#1e3a5f]">
         <th className="sticky left-0 z-10 bg-[#1e3a5f] px-3 py-1.5" />
+        {variant === "store" && (
+          <>
+            <th className="px-3 py-1.5 border-l border-white/20" />
+            <th className="px-3 py-1.5" />
+          </>
+        )}
         <th
           colSpan={2}
           className="px-3 py-1.5 text-center text-[10px] font-semibold text-white border-l border-white/20"
@@ -551,6 +558,16 @@ function PLTableHead({
         <th className="sticky left-0 z-10 bg-sky-100 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 min-w-[200px]">
           {firstColLabel}
         </th>
+        {variant === "store" && (
+          <>
+            <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
+              Store Type
+            </th>
+            <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
+              Trade Zone
+            </th>
+          </>
+        )}
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
           Tag
         </th>
@@ -672,6 +689,12 @@ function TotalRow({
   return (
     <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-xs">
       <td className="sticky left-0 z-10 bg-slate-100 px-3 py-2.5 text-left text-slate-800">합 계</td>
+      {variant === "store" && (
+        <>
+          <td className="px-3 py-2.5 border-l border-slate-200" />
+          <td className="px-3 py-2.5" />
+        </>
+      )}
       <td className="px-3 py-2.5 text-slate-800 border-l border-slate-200">{fmt(totals.tag)}</td>
       <td className="px-3 py-2.5 text-slate-800">{fmt(totals.retail)}</td>
       <td className="px-3 py-2.5 text-slate-400 border-l border-slate-200">—</td>
@@ -894,6 +917,85 @@ function StoreModal({
       });
   }, [stores, selectedMonth, cogsRate, storeDirectCostMap]);
 
+  type GroupKpiRow = {
+    key: string;
+    count: number;
+    perRetail: number;
+    perGrossProfit: number;
+    perDirectCost: number;
+    perOperatingProfit: number;
+  };
+
+  function buildGroupKpi(
+    retailStores: StoreRetailRow[],
+    rows: StorePL[],
+    month: MonthOption,
+    dcMap: StoreDirectCostMap,
+    keyFn: (dc: StoreDirectCost | undefined) => string,
+  ): GroupKpiRow[] {
+    const activeRetailStores = retailStores.filter(
+      (s) => MONTHS.reduce((sum, m) => sum + (s.months[m] ?? 0), 0) > 0,
+    );
+
+    const agg = new Map<string, { retail: number; grossProfit: number; directCost: number; operatingProfit: number }>();
+    for (const row of rows.filter((r) => r.retail > 0)) {
+      const key = keyFn(dcMap[row.storeCode]) || "미정";
+      const cur = agg.get(key) ?? { retail: 0, grossProfit: 0, directCost: 0, operatingProfit: 0 };
+      agg.set(key, {
+        retail: cur.retail + row.retail,
+        grossProfit: cur.grossProfit + row.grossProfit,
+        directCost: cur.directCost + row.directCost,
+        operatingProfit: cur.operatingProfit + row.operatingProfit,
+      });
+    }
+
+    const denomByKey = new Map<string, number>();
+    if (month === "annual") {
+      for (const m of MONTHS) {
+        for (const s of activeRetailStores) {
+          if ((s.months[m] ?? 0) <= 0) continue;
+          const key = keyFn(dcMap[s.storeCode]) || "미정";
+          denomByKey.set(key, (denomByKey.get(key) ?? 0) + 1);
+        }
+      }
+    } else {
+      for (const row of rows.filter((r) => r.retail > 0)) {
+        const key = keyFn(dcMap[row.storeCode]) || "미정";
+        denomByKey.set(key, (denomByKey.get(key) ?? 0) + 1);
+      }
+    }
+
+    return Array.from(agg.entries())
+      .map(([key, v]) => {
+        const d = denomByKey.get(key) ?? 0;
+        return {
+          key,
+          count: d,
+          perRetail: d > 0 ? v.retail / d : 0,
+          perGrossProfit: d > 0 ? v.grossProfit / d : 0,
+          perDirectCost: d > 0 ? v.directCost / d : 0,
+          perOperatingProfit: d > 0 ? v.operatingProfit / d : 0,
+        };
+      })
+      .sort((a, b) => {
+        if (a.key === "미정") return 1;
+        if (b.key === "미정") return -1;
+        return b.perRetail - a.perRetail;
+      });
+  }
+
+  const storeTypeKpi = useMemo(
+    () =>
+      buildGroupKpi(stores, storeRows, selectedMonth, storeDirectCostMap, (dc) => dc?.storeType?.trim() || "미정"),
+    [stores, storeRows, selectedMonth, storeDirectCostMap],
+  );
+
+  const tradeZoneKpi = useMemo(
+    () =>
+      buildGroupKpi(stores, storeRows, selectedMonth, storeDirectCostMap, (dc) => dc?.tradeZone?.trim() || "미정"),
+    [stores, storeRows, selectedMonth, storeDirectCostMap],
+  );
+
   const storeTotals = useMemo(
     () => ({
       retail: storeRows.reduce((s, r) => s + r.retail, 0),
@@ -996,12 +1098,75 @@ function StoreModal({
           </button>
         </div>
 
-        <div className="shrink-0 border-b border-slate-100 bg-[linear-gradient(180deg,#f8fafd_0%,#ffffff_100%)] px-4 py-3">
-          {!selectedStoreCode ? (
-            <p className="text-center text-[11px] text-slate-400 py-1">
-              매장 행을 클릭하면 상단 KPI가 표시됩니다.
-            </p>
-          ) : selectedRow ? (
+        {/* 상단 KPI: 항상 표시 — Store Type / Trade Zone 점당 지표 */}
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex gap-3">
+            {/* 카드1: Store Type별 */}
+            <div className="w-1/2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Store Type별 점당 지표</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-slate-400 border-b border-slate-100">
+                    <th className="pb-1 text-left font-medium">구분</th>
+                    <th className="pb-1 text-right font-medium">점당매출</th>
+                    <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    <th className="pb-1 text-right font-medium">매장수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storeTypeKpi.map((g) => (
+                    <tr key={g.key} className="border-b border-slate-50 last:border-0">
+                      <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost * 1000).toLocaleString()}</td>
+                      <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {Math.round(g.perOperatingProfit * 1000).toLocaleString()}
+                      </td>
+                      <td className="py-1 text-right text-slate-400">{g.count}개</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* 카드2: Trade Zone별 */}
+            <div className="w-1/2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Trade Zone별 점당 지표</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-slate-400 border-b border-slate-100">
+                    <th className="pb-1 text-left font-medium">구분</th>
+                    <th className="pb-1 text-right font-medium">점당매출</th>
+                    <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    <th className="pb-1 text-right font-medium">매장수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradeZoneKpi.map((g) => (
+                    <tr key={g.key} className="border-b border-slate-50 last:border-0">
+                      <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost * 1000).toLocaleString()}</td>
+                      <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {Math.round(g.perOperatingProfit * 1000).toLocaleString()}
+                      </td>
+                      <td className="py-1 text-right text-slate-400">{g.count}개</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* 하단 KPI: 매장 선택 시만 표시 */}
+        {selectedRow && (
+          <div className="shrink-0 border-b border-slate-100 bg-[linear-gradient(180deg,#f8fafd_0%,#ffffff_100%)] px-4 py-3">
             <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
               <StoreKpiCard label="Store Type" value={selectedDc?.storeType?.trim() || "—"} />
               <StoreKpiCard label="Trade Zone" value={selectedDc?.tradeZone?.trim() || "—"} />
@@ -1041,8 +1206,8 @@ function StoreModal({
                 }
               />
             </div>
-          ) : null}
-        </div>
+          </div>
+        )}
 
         <div className="overflow-auto flex-1">
           <table className="min-w-full text-right text-xs">
@@ -1082,6 +1247,12 @@ function StoreModal({
                     <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left whitespace-nowrap">
                       <span className="text-[10px] text-slate-400 mr-1.5">({row.storeCode})</span>
                       <span className="text-slate-700 font-medium">{row.storeName}</span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 text-center whitespace-nowrap border-l border-slate-100">
+                      {storeDirectCostMap[row.storeCode]?.storeType?.trim() || "—"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 text-center whitespace-nowrap">
+                      {storeDirectCostMap[row.storeCode]?.tradeZone?.trim() || "—"}
                     </td>
                     <td className="px-3 py-2 text-slate-700 border-l border-slate-100">{fmt(row.tag)}</td>
                     <td className="px-3 py-2 text-slate-700">{fmt(row.retail)}</td>
