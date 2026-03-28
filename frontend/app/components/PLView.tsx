@@ -84,6 +84,12 @@ function fmtRate(n: number): string {
   return (n * 100).toFixed(1) + "%";
 }
 
+/** 점당 금액(위안) 기준 리테일(V+) 대비 비율 — 그룹 KPI 표 %열 */
+function fmtPerPointVatRate(perNumerator: number, perRetail: number): string {
+  if (!(perRetail > 0)) return "—";
+  return fmtRate((perNumerator * PL_CALC.retailVatFactor) / perRetail);
+}
+
 /** Open Month yyyyMM → YYYY.MM */
 function fmtOpenMonth(ymNum: number): string {
   if (!ymNum || ymNum < 100000) return "—";
@@ -1279,8 +1285,11 @@ function StoreModal({
                     <th className="pb-1 text-left font-medium">구분</th>
                     <th className="pb-1 text-right font-medium">점당매출</th>
                     <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">이익%</th>
                     <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">직접비%</th>
                     <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    <th className="pb-1 text-right font-medium">영업%</th>
                     {selectedMonth === "annual" && (
                       <th className="pb-1 text-right font-medium">매장수</th>
                     )}
@@ -1295,9 +1304,26 @@ function StoreModal({
                       <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
                       <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perGrossProfit, g.perRetail)}
+                      </td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perDirectCost, g.perRetail)}
+                      </td>
                       <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                         {Math.round(g.perOperatingProfit).toLocaleString()}
+                      </td>
+                      <td
+                        className={`py-1 text-right tabular-nums text-[10px] ${
+                          g.perRetail <= 0
+                            ? "text-slate-400"
+                            : g.perOperatingProfit >= 0
+                              ? "text-emerald-600"
+                              : "text-red-500"
+                        }`}
+                      >
+                        {fmtPerPointVatRate(g.perOperatingProfit, g.perRetail)}
                       </td>
                       {selectedMonth === "annual" && (
                         <td className="py-1 text-right text-slate-500 tabular-nums">
@@ -1319,8 +1345,11 @@ function StoreModal({
                     <th className="pb-1 text-left font-medium">구분</th>
                     <th className="pb-1 text-right font-medium">점당매출</th>
                     <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">이익%</th>
                     <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">직접비%</th>
                     <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    <th className="pb-1 text-right font-medium">영업%</th>
                     {selectedMonth === "annual" && (
                       <th className="pb-1 text-right font-medium">매장수</th>
                     )}
@@ -1335,9 +1364,26 @@ function StoreModal({
                       <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
                       <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perGrossProfit, g.perRetail)}
+                      </td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perDirectCost, g.perRetail)}
+                      </td>
                       <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                         {Math.round(g.perOperatingProfit).toLocaleString()}
+                      </td>
+                      <td
+                        className={`py-1 text-right tabular-nums text-[10px] ${
+                          g.perRetail <= 0
+                            ? "text-slate-400"
+                            : g.perOperatingProfit >= 0
+                              ? "text-emerald-600"
+                              : "text-red-500"
+                        }`}
+                      >
+                        {fmtPerPointVatRate(g.perOperatingProfit, g.perRetail)}
                       </td>
                       {selectedMonth === "annual" && (
                         <td className="py-1 text-right text-slate-500 tabular-nums">
@@ -1359,8 +1405,11 @@ function StoreModal({
                     <th className="pb-1 text-left font-medium">구분</th>
                     <th className="pb-1 text-right font-medium">점당매출</th>
                     <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">이익%</th>
                     <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">직접비%</th>
                     <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    <th className="pb-1 text-right font-medium">영업%</th>
                     {selectedMonth === "annual" && (
                       <th className="pb-1 text-right font-medium">매장수</th>
                     )}
@@ -1375,9 +1424,26 @@ function StoreModal({
                       <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
                       <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perGrossProfit, g.perRetail)}
+                      </td>
                       <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-500 text-[10px]">
+                        {fmtPerPointVatRate(g.perDirectCost, g.perRetail)}
+                      </td>
                       <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                         {Math.round(g.perOperatingProfit).toLocaleString()}
+                      </td>
+                      <td
+                        className={`py-1 text-right tabular-nums text-[10px] ${
+                          g.perRetail <= 0
+                            ? "text-slate-400"
+                            : g.perOperatingProfit >= 0
+                              ? "text-emerald-600"
+                              : "text-red-500"
+                        }`}
+                      >
+                        {fmtPerPointVatRate(g.perOperatingProfit, g.perRetail)}
                       </td>
                       {selectedMonth === "annual" && (
                         <td className="py-1 text-right text-slate-500 tabular-nums">
