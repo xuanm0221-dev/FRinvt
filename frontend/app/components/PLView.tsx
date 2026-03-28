@@ -21,6 +21,8 @@ interface Props {
 
 type MonthOption = "annual" | number;
 type PLTableVariant = "dealer" | "store";
+/** 매장 모달 표 열 정렬 */
+type StoreTableSortKey = "name" | "retail" | "grossProfit";
 type OpenGroups = { labor: boolean; rent: boolean; other: boolean };
 const DEFAULT_OPEN_GROUPS: OpenGroups = { labor: false, rent: false, other: false };
 
@@ -64,8 +66,8 @@ function avgLaborPerHeadForDisplay(
 const PL_LEGEND_DIRECT_COST_FORMULA =
   "급여 + 성과급 + 보험/공적금 + 임차(고정+변동) + 감가상각비 + 기타(마케팅·포장·지급수수료·others)";
 
-/** 데이터 열 개수 (첫 열 제외): store 25 */
-const DATA_COLS_STORE = 25;
+/** 데이터 열 개수 (첫 열 제외): store — 인건비 접어도 인원·평균인건비 2열 유지 */
+const DATA_COLS_STORE = 27;
 
 const DROPDOWN_OPTIONS: { value: MonthOption; label: string }[] = [
   { value: "annual", label: "26년 합계" },
@@ -450,18 +452,18 @@ function DirectCostCells({
         <>
           {subTd(salary)}
           {subTd(bonus)}
-          <td
-            className={`px-3 py-2 border-l border-slate-300 ${REF_TD} ${
-              headcount === 0 ? "text-slate-400" : "text-slate-600"
-            }`}
-          >
-            {headcount === 0 ? "—" : `${headcount}명`}
-          </td>
-          <td className={`px-3 py-2 ${REF_TD} ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
-            {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
-          </td>
         </>
       )}
+      <td
+        className={`px-3 py-2 border-l border-slate-300 ${REF_TD} ${
+          headcount === 0 ? "text-slate-400" : "text-slate-600"
+        }`}
+      >
+        {headcount === 0 ? "—" : `${headcount}명`}
+      </td>
+      <td className={`px-3 py-2 ${REF_TD} ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
+        {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
+      </td>
       <td className={`px-3 py-2 border-l border-slate-300 font-semibold ${cls(insurance)}`}>{f(insurance)}</td>
       <td className={`px-3 py-2 font-semibold ${cls(rent)}`}>{f(rent)}</td>
       {variant === "store" && openGroups.rent && (
@@ -489,16 +491,24 @@ function PLTableHead({
   variant,
   openGroups,
   onToggle,
+  storeColumnSort,
 }: {
   firstColLabel: string;
   variant: PLTableVariant;
   openGroups: OpenGroups;
   onToggle: (key: keyof OpenGroups) => void;
+  /** 매장 모달 전용: 매장명·리테일·매출이익 헤더 클릭 정렬 */
+  storeColumnSort?: {
+    sortKey: StoreTableSortKey;
+    sortDir: "asc" | "desc";
+    onSort: (key: StoreTableSortKey) => void;
+  };
 }) {
   // base=7: 직접비합계+비용률+인건비+보험+임차료+감가+기타
+  const laborExtraCols = 2 + (openGroups.labor ? 2 : 0);
   const directSpan =
     7 +
-    (openGroups.labor ? 4 : 0) +
+    laborExtraCols +
     (variant === "store" && openGroups.rent ? 2 : 0) +
     (openGroups.other ? 4 : 0);
 
@@ -512,6 +522,20 @@ function PLTableHead({
       {isOpen ? "▼" : "▶"}
     </button>
   );
+
+  const sortMark = (key: StoreTableSortKey) => {
+    if (!storeColumnSort || storeColumnSort.sortKey !== key) {
+      return <span className="ml-0.5 text-[9px] font-normal text-slate-400">↕</span>;
+    }
+    return (
+      <span className="ml-0.5 text-[9px] font-normal text-blue-700">
+        {storeColumnSort.sortDir === "asc" ? "▲" : "▼"}
+      </span>
+    );
+  };
+
+  const sortableThBtnClass =
+    "inline-flex max-w-full items-center rounded px-0.5 -mx-0.5 text-left font-semibold text-slate-700 hover:bg-sky-200/80 hover:text-blue-800";
 
   return (
     <thead className="sticky top-0 z-20">
@@ -556,7 +580,22 @@ function PLTableHead({
       </tr>
       <tr className="bg-sky-100 border-b border-sky-200">
         <th className="sticky left-0 z-10 bg-sky-100 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 min-w-[200px]">
-          {firstColLabel}
+          {variant === "store" && storeColumnSort ? (
+            <button
+              type="button"
+              className={sortableThBtnClass}
+              title="매장명 기준 정렬"
+              onClick={(e) => {
+                e.stopPropagation();
+                storeColumnSort.onSort("name");
+              }}
+            >
+              {firstColLabel}
+              {sortMark("name")}
+            </button>
+          ) : (
+            firstColLabel
+          )}
         </th>
         {variant === "store" && (
           <>
@@ -571,13 +610,45 @@ function PLTableHead({
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
           Tag
         </th>
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">리테일(V+)</th>
+        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
+          {variant === "store" && storeColumnSort ? (
+            <button
+              type="button"
+              className={`${sortableThBtnClass} justify-end w-full`}
+              title="리테일(V+) 기준 정렬"
+              onClick={(e) => {
+                e.stopPropagation();
+                storeColumnSort.onSort("retail");
+              }}
+            >
+              리테일(V+)
+              {sortMark("retail")}
+            </button>
+          ) : (
+            "리테일(V+)"
+          )}
+        </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
           25년 출고율
         </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">매출원가</th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
-          매출이익
+          {variant === "store" && storeColumnSort ? (
+            <button
+              type="button"
+              className={`${sortableThBtnClass} justify-end w-full`}
+              title="매출이익 기준 정렬"
+              onClick={(e) => {
+                e.stopPropagation();
+                storeColumnSort.onSort("grossProfit");
+              }}
+            >
+              매출이익
+              {sortMark("grossProfit")}
+            </button>
+          ) : (
+            "매출이익"
+          )}
         </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">매출이익률</th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
@@ -591,12 +662,12 @@ function PLTableHead({
           <>
             <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${SUB_HEAD}`}>(급여)</th>
             <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${SUB_HEAD}`}>(성과급)</th>
-            <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap border-l border-sky-300 ${REF_COL}`}>
-              인원수
-            </th>
-            <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${REF_COL}`}>평균인건비</th>
           </>
         )}
+        <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap border-l border-sky-300 ${REF_COL}`}>
+          인원수
+        </th>
+        <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${REF_COL}`}>평균인건비</th>
         <th
           className={`px-3 py-2.5 text-xs whitespace-nowrap border-l border-sky-300 ${L1_HEAD}`}
         >
@@ -710,18 +781,18 @@ function TotalRow({
         <>
           {subTd(totals.salary)}
           {subTd(totals.bonus)}
-          <td
-            className={`px-3 py-2.5 bg-slate-200 border-l border-slate-300 ${
-              totals.headcount === 0 ? "text-slate-400" : "text-slate-700"
-            }`}
-          >
-            {totals.headcount === 0 ? "—" : `${totals.headcount}명`}
-          </td>
-          <td className={`px-3 py-2.5 bg-slate-200 ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
-            {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
-          </td>
         </>
       )}
+      <td
+        className={`px-3 py-2.5 bg-slate-200 border-l border-slate-300 ${
+          totals.headcount === 0 ? "text-slate-400" : "text-slate-700"
+        }`}
+      >
+        {totals.headcount === 0 ? "—" : `${totals.headcount}명`}
+      </td>
+      <td className={`px-3 py-2.5 bg-slate-200 ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
+        {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
+      </td>
       <td className={`px-3 py-2.5 border-l border-slate-300 text-slate-800 ${c(totals.insurance)}`}>
         {f(totals.insurance)}
       </td>
@@ -762,6 +833,25 @@ function TotalRow({
   );
 }
 
+/** Trade Zone KPI 표 정렬: H → F1,F2,… → O1,O2,… → 기타 → 미정 */
+function compareTradeZoneKpi(a: { key: string }, b: { key: string }): number {
+  const tier = (k: string): [number, number, string] => {
+    if (k === "미정") return [4, 0, k];
+    if (/^H$/i.test(k)) return [0, 0, k];
+    const fm = /^F(\d+)$/i.exec(k);
+    if (fm) return [1, parseInt(fm[1], 10), k];
+    const om = /^O(\d+)$/i.exec(k);
+    if (om) return [2, parseInt(om[1], 10), k];
+    return [3, 0, k];
+  };
+  const [ta, na, sa] = tier(a.key);
+  const [tb, nb, sb] = tier(b.key);
+  if (ta !== tb) return ta - tb;
+  if (ta === 3) return sa.localeCompare(sb, "en");
+  if (na !== nb) return na - nb;
+  return sa.localeCompare(sb, "en");
+}
+
 // ─── 매장별 팝업 모달 ─────────────────────────────────────────────
 interface StoreModalProps {
   dealer: DealerPL;
@@ -786,8 +876,19 @@ function StoreModal({
 }: StoreModalProps) {
   const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
+  const [storeTableSortKey, setStoreTableSortKey] = useState<StoreTableSortKey>("retail");
+  const [storeTableSortDir, setStoreTableSortDir] = useState<"asc" | "desc">("desc");
   const toggleGroup = (key: keyof OpenGroups) =>
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const onStoreTableSort = useCallback((key: StoreTableSortKey) => {
+    if (key === storeTableSortKey) {
+      setStoreTableSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setStoreTableSortKey(key);
+      setStoreTableSortDir(key === "name" ? "asc" : "desc");
+    }
+  }, [storeTableSortKey]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -799,6 +900,8 @@ function StoreModal({
 
   useEffect(() => {
     setSelectedStoreCode(null);
+    setStoreTableSortKey("retail");
+    setStoreTableSortDir("desc");
   }, [dealer.accountId]);
 
   const stores = storeRetailMap[brand]?.[dealer.accountId] ?? [];
@@ -917,6 +1020,16 @@ function StoreModal({
       });
   }, [stores, selectedMonth, cogsRate, storeDirectCostMap]);
 
+  const sortedModalStoreRows = useMemo(() => {
+    const rows = storeRows.filter((r) => r.retail > 0);
+    const m = storeTableSortDir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      if (storeTableSortKey === "name") return m * a.storeName.localeCompare(b.storeName, "ko");
+      if (storeTableSortKey === "retail") return m * (a.retail - b.retail);
+      return m * (a.grossProfit - b.grossProfit);
+    });
+  }, [storeRows, storeTableSortKey, storeTableSortDir]);
+
   type GroupKpiRow = {
     key: string;
     count: number;
@@ -932,6 +1045,7 @@ function StoreModal({
     month: MonthOption,
     dcMap: StoreDirectCostMap,
     keyFn: (dc: StoreDirectCost | undefined) => string,
+    rowSort?: (a: GroupKpiRow, b: GroupKpiRow) => number,
   ): GroupKpiRow[] {
     const activeRetailStores = retailStores.filter(
       (s) => MONTHS.reduce((sum, m) => sum + (s.months[m] ?? 0), 0) > 0,
@@ -977,11 +1091,14 @@ function StoreModal({
           perOperatingProfit: d > 0 ? v.operatingProfit / d : 0,
         };
       })
-      .sort((a, b) => {
-        if (a.key === "미정") return 1;
-        if (b.key === "미정") return -1;
-        return b.perRetail - a.perRetail;
-      });
+      .sort(
+        rowSort ??
+          ((a, b) => {
+            if (a.key === "미정") return 1;
+            if (b.key === "미정") return -1;
+            return b.perRetail - a.perRetail;
+          }),
+      );
   }
 
   const storeTypeKpi = useMemo(
@@ -992,9 +1109,53 @@ function StoreModal({
 
   const tradeZoneKpi = useMemo(
     () =>
-      buildGroupKpi(stores, storeRows, selectedMonth, storeDirectCostMap, (dc) => dc?.tradeZone?.trim() || "미정"),
+      buildGroupKpi(
+        stores,
+        storeRows,
+        selectedMonth,
+        storeDirectCostMap,
+        (dc) => dc?.tradeZone?.trim() || "미정",
+        compareTradeZoneKpi,
+      ),
     [stores, storeRows, selectedMonth, storeDirectCostMap],
   );
+
+  const regionNmKpi = useMemo(
+    () =>
+      buildGroupKpi(stores, storeRows, selectedMonth, storeDirectCostMap, (dc) => dc?.regionNm?.trim() || "미정"),
+    [stores, storeRows, selectedMonth, storeDirectCostMap],
+  );
+
+  /** region_nm별 city_nm 매장 수 상위 5개 — 참고 문구용 */
+  const REGION_NOTE_TOP_CITIES = 5;
+  const regionNmCityNoteSegments = useMemo(() => {
+    const byRegion = new Map<string, Map<string, number>>();
+    for (const s of stores) {
+      const dc = storeDirectCostMap[s.storeCode];
+      if (!dc) continue;
+      const r = dc.regionNm?.trim() || "미정";
+      const c = dc.cityNm?.trim();
+      if (!c) continue;
+      if (!byRegion.has(r)) byRegion.set(r, new Map());
+      const m = byRegion.get(r)!;
+      m.set(c, (m.get(c) ?? 0) + 1);
+    }
+    const segments: string[] = [];
+    const seen = new Set<string>();
+    for (const g of regionNmKpi) {
+      const r = g.key;
+      if (seen.has(r)) continue;
+      seen.add(r);
+      const m = byRegion.get(r);
+      if (!m || m.size === 0) continue;
+      const top = [...m.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+        .slice(0, REGION_NOTE_TOP_CITIES)
+        .map(([city]) => city);
+      if (top.length > 0) segments.push(`${r}: ${top.join(", ")}`);
+    }
+    return segments;
+  }, [stores, storeDirectCostMap, regionNmKpi]);
 
   const storeTotals = useMemo(
     () => ({
@@ -1030,6 +1191,12 @@ function StoreModal({
   const selectedDc = selectedStoreCode ? storeDirectCostMap[selectedStoreCode] : undefined;
 
   const monthLabel = selectedMonth === "annual" ? "26년 합계" : `26.${String(selectedMonth).padStart(2, "0")}`;
+
+  /** 월: 당월 리테일 > 0 매장 수. 연간: Store Type별 매장수(계산용) 합 ÷ 12(월평균 슬롯). */
+  const headerStoreCount =
+    selectedMonth === "annual"
+      ? Math.round(storeTypeKpi.reduce((s, g) => s + g.count, 0) / 12)
+      : storeRows.filter((r) => r.retail > 0).length;
 
   const kpiOpenMonth = selectedDc ? fmtOpenMonth(selectedDc.openMonth) : "—";
   const kpiArea =
@@ -1084,7 +1251,9 @@ function StoreModal({
             <span className="ml-2 rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
               {brand} · {monthLabel}
             </span>
-            <span className="text-[11px] text-slate-400">매장 {storeRows.length}개</span>
+            <span className="ml-1 rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+              매장 {headerStoreCount}개
+            </span>
           </div>
           <button
             type="button"
@@ -1098,11 +1267,11 @@ function StoreModal({
           </button>
         </div>
 
-        {/* 상단 KPI: 항상 표시 — Store Type / Trade Zone 점당 지표 */}
+        {/* 상단 KPI: 항상 표시 — Store Type / Trade Zone / region_nm 점당 지표 */}
         <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="flex gap-3">
+          <div className="flex gap-3 overflow-x-auto min-w-0">
             {/* 카드1: Store Type별 */}
-            <div className="w-1/2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="min-w-[260px] flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Store Type별 점당 지표</p>
               <table className="w-full text-xs">
                 <thead>
@@ -1112,19 +1281,29 @@ function StoreModal({
                     <th className="pb-1 text-right font-medium">점당매출이익</th>
                     <th className="pb-1 text-right font-medium">점당직접비</th>
                     <th className="pb-1 text-right font-medium">점당영업이익</th>
-                    <th className="pb-1 text-right font-medium">매장수</th>
+                    {selectedMonth === "annual" && (
+                      <th className="pb-1 text-right font-medium">매장수</th>
+                    )}
+                    <th className="pb-1 text-right font-medium">
+                      {selectedMonth === "annual" ? "매장수(계산용)" : "매장수"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {storeTypeKpi.map((g) => (
                     <tr key={g.key} className="border-b border-slate-50 last:border-0">
                       <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail * 1000).toLocaleString()}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit * 1000).toLocaleString()}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
                       <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                        {Math.round(g.perOperatingProfit * 1000).toLocaleString()}
+                        {Math.round(g.perOperatingProfit).toLocaleString()}
                       </td>
+                      {selectedMonth === "annual" && (
+                        <td className="py-1 text-right text-slate-500 tabular-nums">
+                          {Math.round(g.count / 12)}개
+                        </td>
+                      )}
                       <td className="py-1 text-right text-slate-400">{g.count}개</td>
                     </tr>
                   ))}
@@ -1132,7 +1311,7 @@ function StoreModal({
               </table>
             </div>
             {/* 카드2: Trade Zone별 */}
-            <div className="w-1/2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="min-w-[260px] flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Trade Zone별 점당 지표</p>
               <table className="w-full text-xs">
                 <thead>
@@ -1142,24 +1321,86 @@ function StoreModal({
                     <th className="pb-1 text-right font-medium">점당매출이익</th>
                     <th className="pb-1 text-right font-medium">점당직접비</th>
                     <th className="pb-1 text-right font-medium">점당영업이익</th>
-                    <th className="pb-1 text-right font-medium">매장수</th>
+                    {selectedMonth === "annual" && (
+                      <th className="pb-1 text-right font-medium">매장수</th>
+                    )}
+                    <th className="pb-1 text-right font-medium">
+                      {selectedMonth === "annual" ? "매장수(계산용)" : "매장수"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {tradeZoneKpi.map((g) => (
                     <tr key={g.key} className="border-b border-slate-50 last:border-0">
                       <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail * 1000).toLocaleString()}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit * 1000).toLocaleString()}</td>
-                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost * 1000).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
                       <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                        {Math.round(g.perOperatingProfit * 1000).toLocaleString()}
+                        {Math.round(g.perOperatingProfit).toLocaleString()}
                       </td>
+                      {selectedMonth === "annual" && (
+                        <td className="py-1 text-right text-slate-500 tabular-nums">
+                          {Math.round(g.count / 12)}개
+                        </td>
+                      )}
                       <td className="py-1 text-right text-slate-400">{g.count}개</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            {/* 카드3: region_nm별 */}
+            <div className="min-w-[260px] flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">region_nm별 점당 지표</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-slate-400 border-b border-slate-100">
+                    <th className="pb-1 text-left font-medium">구분</th>
+                    <th className="pb-1 text-right font-medium">점당매출</th>
+                    <th className="pb-1 text-right font-medium">점당매출이익</th>
+                    <th className="pb-1 text-right font-medium">점당직접비</th>
+                    <th className="pb-1 text-right font-medium">점당영업이익</th>
+                    {selectedMonth === "annual" && (
+                      <th className="pb-1 text-right font-medium">매장수</th>
+                    )}
+                    <th className="pb-1 text-right font-medium">
+                      {selectedMonth === "annual" ? "매장수(계산용)" : "매장수"}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regionNmKpi.map((g) => (
+                    <tr key={g.key} className="border-b border-slate-50 last:border-0">
+                      <td className="py-1 text-left font-semibold text-slate-700">{g.key}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(g.perRetail).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perGrossProfit).toLocaleString()}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-600">{Math.round(g.perDirectCost).toLocaleString()}</td>
+                      <td className={`py-1 text-right tabular-nums ${g.perOperatingProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {Math.round(g.perOperatingProfit).toLocaleString()}
+                      </td>
+                      {selectedMonth === "annual" && (
+                        <td className="py-1 text-right text-slate-500 tabular-nums">
+                          {Math.round(g.count / 12)}개
+                        </td>
+                      )}
+                      <td className="py-1 text-right text-slate-400">{g.count}개</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {regionNmCityNoteSegments.length > 0 ? (
+                <p className="mt-2.5 border-t border-slate-100 pt-2 text-[10px] leading-relaxed text-slate-500">
+                  <span className="font-semibold text-slate-600">참고(예시):</span>{" "}
+                  <span className="text-slate-600">
+                    {regionNmCityNoteSegments.join(" · ")}
+                  </span>
+                  <span className="text-slate-400">
+                    {" "}
+                    (해당 대리상 매장 기준, city_nm 매장 수 상위 {REGION_NOTE_TOP_CITIES}개)
+                  </span>
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1211,14 +1452,24 @@ function StoreModal({
 
         <div className="overflow-auto flex-1">
           <table className="min-w-full text-right text-xs">
-            <PLTableHead firstColLabel="매장코드 · 매장명" variant="store" openGroups={openGroups} onToggle={toggleGroup} />
+            <PLTableHead
+              firstColLabel="매장코드 · 매장명"
+              variant="store"
+              openGroups={openGroups}
+              onToggle={toggleGroup}
+              storeColumnSort={{
+                sortKey: storeTableSortKey,
+                sortDir: storeTableSortDir,
+                onSort: onStoreTableSort,
+              }}
+            />
             {storeRows.length > 0 && (
               <tfoot className="sticky bottom-0 z-20">
                 <TotalRow totals={storeTotals} variant="store" selectedMonth={selectedMonth} openGroups={openGroups} />
               </tfoot>
             )}
             <tbody className="divide-y divide-slate-100">
-              {storeRows.filter((row) => row.retail > 0).map((row, i) => {
+              {sortedModalStoreRows.map((row, i) => {
                 const isSel = row.storeCode === selectedStoreCode;
                 const gmr = plGrossMarginRate(row.retail, row.grossProfit);
                 return (

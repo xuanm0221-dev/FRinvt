@@ -14,6 +14,7 @@ interface Props {
   retail2026: RetailData | null;
   retailPlan2026: RetailData | null;
   retailPos2025: RetailData | null;
+  retailDw2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
   cogsRateMap?: Record<string, Record<string, number>>;
@@ -37,6 +38,7 @@ export default function DashboardClient({
   retail2026,
   retailPlan2026,
   retailPos2025,
+  retailDw2025,
   appOtb2026,
   accountNameMap = {},
   cogsRateMap = {},
@@ -84,6 +86,7 @@ export default function DashboardClient({
             retail2026={retail2026}
             retailPlan2026={retailPlan2026}
             retailPos2025={retailPos2025}
+            retailDw2025={retailDw2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
           />

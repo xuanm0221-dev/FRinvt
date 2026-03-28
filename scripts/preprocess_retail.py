@@ -229,8 +229,8 @@ def fetch(conn, start_yymm: str, end_yymm: str) -> pd.DataFrame:
     return df
 
 
-def build_json(df: pd.DataFrame) -> dict:
-    result = {"year": "2026", "brands": {}}
+def build_json(df: pd.DataFrame, year: str = "2026") -> dict:
+    result = {"year": year, "brands": {}}
     df = df.copy()
     df["brand_nm"] = df["brd_cd"].map(BRAND_MAP)
     df["month"] = df["yymm"].astype(str).str[-2:].astype(int)
@@ -331,7 +331,7 @@ def main():
             df = fetch(conn, "202601", fetch_end)
             print(f"  조회: {len(df)}건")
             data = (
-                build_json(df)
+                build_json(df, "2026")
                 if not df.empty
                 else {"year": "2026", "brands": {b: [] for b in BRAND_ORDER}}
             )
@@ -361,7 +361,7 @@ def main():
             if existing:
                 data = merge_new_months(existing, df)
             else:
-                data = build_json(df)
+                data = build_json(df, "2026")
 
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

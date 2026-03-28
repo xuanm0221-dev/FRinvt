@@ -31,6 +31,8 @@ interface Props {
   inbound2025?: InboundData | null;
   stock2026?: StockData | null;
   retail2026?: RetailData | null;
+  /** 2026 YOY(25년POS) 분모 — retail_dw_2025.json */
+  retailDw2025?: RetailData | null;
   inbound2026?: InboundData | null;
   growthRate?: number;
   onGrowthRateChange?: (v: number) => void;
@@ -71,6 +73,7 @@ export default function DealerDetailTable({
   inbound2025,
   stock2026,
   retail2026,
+  retailDw2025 = null,
   inbound2026,
   growthRate = 100,
   onGrowthRateChange,
@@ -170,12 +173,13 @@ export default function DealerDetailTable({
             appOtb,
             "2026",
             targetWeeks,
-            sellThrough
+            sellThrough,
+            retailDw2025
           )
         )
       : [];
     const curr = year === "2026"
-      ? (all2026.length > 0 ? all2026 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, "2026", targetWeeks, sellThrough)))
+      ? (all2026.length > 0 ? all2026 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, "2026", targetWeeks, sellThrough, retailDw2025)))
       : (all2025.length > 0 ? all2025 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, year, targetWeeks, sellThrough)));
     const filtered =
       year === "2026"
@@ -198,6 +202,7 @@ export default function DealerDetailTable({
     inbound2025,
     stock2026,
     retail2026,
+    retailDw2025,
     inbound2026,
     appOtb,
     year,
@@ -222,6 +227,8 @@ export default function DealerDetailTable({
     let accPurchaseYoy: number | null = null;
     let accSalesYoy: number | null = null;
     let accEndingYoy: number | null = null;
+    let apparelSalesYoyPos: number | null = null;
+    let accSalesYoyPos: number | null = null;
 
     if (year === "2026" && metricsPrev.length === metrics.length) {
       const prevApparelPurchase = metricsPrev.reduce((s, m) => s + m.apparel.purchase, 0);
@@ -239,6 +246,15 @@ export default function DealerDetailTable({
       accEndingYoy = yoy(accEnding, prevAccEnding);
     }
 
+    if (year === "2026") {
+      const sumPosCurrA = metrics.reduce((s, m) => s + (m.apparel.retailSalesPos ?? 0), 0);
+      const sumPosPrevA = metrics.reduce((s, m) => s + (m.apparel.prevRetailSalesPos ?? 0), 0);
+      apparelSalesYoyPos = sumPosPrevA === 0 ? null : (sumPosCurrA / sumPosPrevA) * 100;
+      const sumPosCurrAcc = metrics.reduce((s, m) => s + (m.acc.retailSalesPos ?? 0), 0);
+      const sumPosPrevAcc = metrics.reduce((s, m) => s + (m.acc.prevRetailSalesPos ?? 0), 0);
+      accSalesYoyPos = sumPosPrevAcc === 0 ? null : (sumPosCurrAcc / sumPosPrevAcc) * 100;
+    }
+
     return {
       apparel: {
         base: apparelBase,
@@ -249,6 +265,7 @@ export default function DealerDetailTable({
         purchaseYoy: apparelPurchaseYoy,
         salesYoy: apparelSalesYoy,
         endingYoy: apparelEndingYoy,
+        salesYoyPos: apparelSalesYoyPos,
       },
       acc: {
         base: accBase,
@@ -259,6 +276,7 @@ export default function DealerDetailTable({
         purchaseYoy: accPurchaseYoy,
         salesYoy: accSalesYoy,
         endingYoy: accEndingYoy,
+        salesYoyPos: accSalesYoyPos,
       },
     };
   }, [metrics, metricsPrev, year]);
@@ -268,7 +286,19 @@ export default function DealerDetailTable({
     const apparelCurrent: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null })[] = [];
     const apparelYearGroups: (ApparelYearGroupDetail & { data: ApparelYearGroupDetail["data"] & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null } })[] = [];
     let apparelOld: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }) | null = null;
-    const accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null; purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }[] = [];
+    const accItemsDetail: {
+      item: string;
+      base: number;
+      purchase: number;
+      sales: number;
+      ending: number;
+      weeks: number | null;
+      purchaseYoy?: number | null;
+      salesYoy?: number | null;
+      endingYoy?: number | null;
+      salesYoyPos?: number | null;
+      prevRetailPosSales?: number;
+    }[] = [];
 
     const yoyFn = (curr: number, prev: number) => (prev === 0 ? null : (curr / prev) * 100);
 
@@ -301,14 +331,26 @@ export default function DealerDetailTable({
       }
     }
 
-    const currByLabel = new Map<string, { base: number; purchase: number; sales: number; ending: number }>();
+    const currByLabel = new Map<
+      string,
+      { base: number; purchase: number; sales: number; ending: number; retailSalesPos: number; prevRetailPosSales: number }
+    >();
     for (const m of metrics) {
       for (const s of m.apparelCurrent) {
-        const ex = currByLabel.get(s.label) ?? { base: 0, purchase: 0, sales: 0, ending: 0 };
+        const ex = currByLabel.get(s.label) ?? {
+          base: 0,
+          purchase: 0,
+          sales: 0,
+          ending: 0,
+          retailSalesPos: 0,
+          prevRetailPosSales: 0,
+        };
         ex.base += s.base;
         ex.purchase += s.purchase;
         ex.sales += s.sales;
         ex.ending += s.ending;
+        ex.retailSalesPos += s.retailSalesPos ?? 0;
+        ex.prevRetailPosSales += s.prevRetailPosSales ?? 0;
         currByLabel.set(s.label, ex);
       }
     }
@@ -321,6 +363,8 @@ export default function DealerDetailTable({
       if (!ex) continue;
       const sellThrough = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
       const prev = prevByLabel.get(prevSeason(label));
+      const pp = ex.prevRetailPosSales;
+      const pc = ex.retailSalesPos;
       apparelCurrent.push({
         label,
         ...ex,
@@ -328,12 +372,15 @@ export default function DealerDetailTable({
         purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
         salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
         endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+        salesYoyPos: year === "2026" && pp > 0 ? yoyFn(pc, pp) : null,
       });
     }
     for (const [label, ex] of currByLabel) {
       if (seenCurr.has(label)) continue;
       const sellThrough = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
       const prev = prevByLabel.get(prevSeason(label));
+      const pp = ex.prevRetailPosSales;
+      const pc = ex.retailSalesPos;
       apparelCurrent.push({
         label,
         ...ex,
@@ -341,27 +388,58 @@ export default function DealerDetailTable({
         purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
         salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
         endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+        salesYoyPos: year === "2026" && pp > 0 ? yoyFn(pc, pp) : null,
       });
     }
 
-    const grpByLabel = new Map<string, { data: { base: number; purchase: number; sales: number; ending: number; sellThrough: number | null }; seasons: Map<string, ApparelSeasonDetail> }>();
+    const grpByLabel = new Map<
+      string,
+      {
+        data: {
+          base: number;
+          purchase: number;
+          sales: number;
+          ending: number;
+          sellThrough: number | null;
+          retailSalesPos: number;
+          prevRetailPosSales: number;
+        };
+        seasons: Map<string, ApparelSeasonDetail & { retailSalesPos?: number; prevRetailPosSales?: number }>;
+      }
+    >();
     for (const m of metrics) {
       for (const grp of m.apparelYearGroups) {
         let g = grpByLabel.get(grp.label);
         if (!g) {
-          g = { data: { base: 0, purchase: 0, sales: 0, ending: 0, sellThrough: null }, seasons: new Map() };
+          g = {
+            data: { base: 0, purchase: 0, sales: 0, ending: 0, sellThrough: null, retailSalesPos: 0, prevRetailPosSales: 0 },
+            seasons: new Map(),
+          };
           grpByLabel.set(grp.label, g);
         }
         g.data.base += grp.data.base;
         g.data.purchase += grp.data.purchase;
         g.data.sales += grp.data.sales;
         g.data.ending += grp.data.ending;
+        g.data.retailSalesPos += grp.data.retailSalesPos ?? 0;
+        g.data.prevRetailPosSales += grp.data.prevRetailPosSales ?? 0;
         for (const s of grp.seasons) {
-          const ex = g.seasons.get(s.label) ?? { label: s.label, base: 0, purchase: 0, sales: 0, ending: 0, sellThrough: null };
+          const ex = g.seasons.get(s.label) ?? {
+            label: s.label,
+            base: 0,
+            purchase: 0,
+            sales: 0,
+            ending: 0,
+            sellThrough: null,
+            retailSalesPos: 0,
+            prevRetailPosSales: 0,
+          };
           ex.base += s.base;
           ex.purchase += s.purchase;
           ex.sales += s.sales;
           ex.ending += s.ending;
+          ex.retailSalesPos = (ex.retailSalesPos ?? 0) + (s.retailSalesPos ?? 0);
+          ex.prevRetailPosSales = (ex.prevRetailPosSales ?? 0) + (s.prevRetailPosSales ?? 0);
           g.seasons.set(s.label, ex);
         }
       }
@@ -402,15 +480,20 @@ export default function DealerDetailTable({
         if (!ex) continue;
         const st = ex.base + ex.purchase > 0 ? (ex.sales / (ex.base + ex.purchase)) * 100 : null;
         const prev = prevByLabel.get(prevSeason(s.label));
+        const pp = ex.prevRetailPosSales ?? 0;
+        const pc = ex.retailSalesPos ?? 0;
         seasons.push({
           ...ex,
           sellThrough: st,
           purchaseYoy: prev ? yoyFn(ex.purchase, prev.purchase) : null,
           salesYoy: prev ? yoyFn(ex.sales, prev.sales) : null,
           endingYoy: prev ? yoyFn(ex.ending, prev.ending) : null,
+          salesYoyPos: year === "2026" && pp > 0 ? yoyFn(pc, pp) : null,
         });
       }
       const grpPrev = prevByGrpLabel.get(grp.label);
+      const gpp = g.data.prevRetailPosSales;
+      const gpc = g.data.retailSalesPos;
       apparelYearGroups.push({
         label: grp.label,
         data: {
@@ -422,18 +505,21 @@ export default function DealerDetailTable({
           purchaseYoy: grpPrev ? yoyFn(purchase, grpPrev.purchase) : null,
           salesYoy: grpPrev ? yoyFn(sales, grpPrev.sales) : null,
           endingYoy: grpPrev ? yoyFn(ending, grpPrev.ending) : null,
+          salesYoyPos: year === "2026" && gpp > 0 ? yoyFn(gpc, gpp) : null,
         },
         seasons,
       });
     }
 
-    let oldSum = { base: 0, purchase: 0, sales: 0, ending: 0 };
+    let oldSum = { base: 0, purchase: 0, sales: 0, ending: 0, retailSalesPos: 0, prevRetailPosSales: 0 };
     for (const m of metrics) {
       if (m.apparelOld) {
         oldSum.base += m.apparelOld.base;
         oldSum.purchase += m.apparelOld.purchase;
         oldSum.sales += m.apparelOld.sales;
         oldSum.ending += m.apparelOld.ending;
+        oldSum.retailSalesPos += m.apparelOld.retailSalesPos ?? 0;
+        oldSum.prevRetailPosSales += m.apparelOld.prevRetailPosSales ?? 0;
       }
     }
     if (oldSum.base + oldSum.purchase + oldSum.sales + oldSum.ending > 0) {
@@ -446,17 +532,22 @@ export default function DealerDetailTable({
         purchaseYoy: oldPrev ? yoyFn(oldSum.purchase, oldPrev.purchase) : null,
         salesYoy: oldPrev ? yoyFn(oldSum.sales, oldPrev.sales) : null,
         endingYoy: oldPrev ? yoyFn(oldSum.ending, oldPrev.ending) : null,
+        salesYoyPos:
+          year === "2026" && oldSum.prevRetailPosSales > 0
+            ? yoyFn(oldSum.retailSalesPos, oldSum.prevRetailPosSales)
+            : null,
       };
     }
 
-    const accByItem = new Map<string, { base: number; purchase: number; sales: number; ending: number }>();
+    const accByItem = new Map<string, { base: number; purchase: number; sales: number; ending: number; prevRetailPosSales: number }>();
     for (const m of metrics) {
       for (const a of m.accItemsDetail) {
-        const ex = accByItem.get(a.item) ?? { base: 0, purchase: 0, sales: 0, ending: 0 };
+        const ex = accByItem.get(a.item) ?? { base: 0, purchase: 0, sales: 0, ending: 0, prevRetailPosSales: 0 };
         ex.base += a.base;
         ex.purchase += a.purchase;
         ex.sales += a.sales;
         ex.ending += a.ending;
+        ex.prevRetailPosSales += a.prevRetailPosSales ?? 0;
         accByItem.set(a.item, ex);
       }
     }
@@ -465,6 +556,7 @@ export default function DealerDetailTable({
       if (!ex) continue;
       const weeks = ex.sales > 0 ? ex.ending / ((ex.sales / 365) * 7) : null;
       const accPrev = prevByAccItem.get(item);
+      const pps = ex.prevRetailPosSales;
       accItemsDetail.push({
         item,
         ...ex,
@@ -472,6 +564,7 @@ export default function DealerDetailTable({
         purchaseYoy: accPrev ? yoyFn(ex.purchase, accPrev.purchase) : null,
         salesYoy: accPrev ? yoyFn(ex.sales, accPrev.sales) : null,
         endingYoy: accPrev ? yoyFn(ex.ending, accPrev.ending) : null,
+        salesYoyPos: year === "2026" && pps > 0 ? yoyFn(ex.sales, pps) : null,
       });
     }
 
@@ -490,13 +583,15 @@ export default function DealerDetailTable({
   const tdAppNoRight = tdApp;
   const tdAppBase = `${tdApp} ${tdDottedRight}`;
   const tdAppPurchaseYoy = `${tdApp} ${tdDottedRight}`;
-  const tdAppSalesYoy = `${tdApp} ${tdDottedRight}`;
+  const tdAppSalesYoy = year === "2026" ? tdApp : `${tdApp} ${tdDottedRight}`;
+  const tdAppSalesYoyPos = `${tdApp} ${tdDottedRight}`;
   const tdAppSellThrough = `${tdApp} border-r-[6px] border-r-slate-300`;
   const tdAcc = td;
   const tdAccNoRight = tdAcc;
   const tdAccBase = `${tdAcc} ${tdDottedRight}`;
   const tdAccPurchaseYoy = `${tdAcc} ${tdDottedRight}`;
-  const tdAccSalesYoy = `${tdAcc} ${tdDottedRight}`;
+  const tdAccSalesYoy = year === "2026" ? tdAcc : `${tdAcc} ${tdDottedRight}`;
+  const tdAccSalesYoyPos = `${tdAcc} ${tdDottedRight}`;
   const tdAccFirst = tdAcc;
   const tdAccLast = `${tdAcc} border-r-0`;
   const tdSub = "px-2 py-1.5 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap border-b border-slate-100/30";
@@ -504,12 +599,14 @@ export default function DealerDetailTable({
   const tdSubApp = tdSub;
   const tdSubAppBase = `${tdSubApp} ${tdSubDottedRight}`;
   const tdSubAppPurchaseYoy = `${tdSubApp} ${tdSubDottedRight}`;
-  const tdSubAppSalesYoy = `${tdSubApp} ${tdSubDottedRight}`;
+  const tdSubAppSalesYoy = year === "2026" ? tdSubApp : `${tdSubApp} ${tdSubDottedRight}`;
+  const tdSubAppSalesYoyPos = `${tdSubApp} ${tdSubDottedRight}`;
   const tdSubAppSellThrough = `${tdSubApp} border-r-[6px] border-r-slate-300 border-b-slate-100/30`;
   const tdSubAcc = tdSub;
   const tdSubAccBase = `${tdSubAcc} ${tdSubDottedRight}`;
   const tdSubAccPurchaseYoy = `${tdSubAcc} ${tdSubDottedRight}`;
-  const tdSubAccSalesYoy = `${tdSubAcc} ${tdSubDottedRight}`;
+  const tdSubAccSalesYoy = year === "2026" ? tdSubAcc : `${tdSubAcc} ${tdSubDottedRight}`;
+  const tdSubAccSalesYoyPos = `${tdSubAcc} ${tdSubDottedRight}`;
   const tdSubAccLast = `${tdSubAcc} border-r-0`;
   const tdLSub = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-100/30 overflow-hidden";
   const tdLSubWithRight = `${tdLSub} border-r-[6px] border-r-slate-300 border-b-slate-100/30`;
@@ -517,13 +614,17 @@ export default function DealerDetailTable({
   const tdL = `${tdLBase} bg-white`;
   const tdLTotal = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-[6px] border-r-slate-300 overflow-hidden sticky left-0 bg-slate-100 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] font-semibold";
 
-  // [name, 중분류(의류), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, SellThrough, 중분류(ACC), 기초, 매입, YOY, 판매, YOY, 기말재고, YOY, 재고주수]
-  const COL_WIDTHS = [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62];
+  // 2025: name + 의류9 + ACC9 | 2026: + YOY(25년POS) 각 구역당 1열
+  const COL_WIDTHS =
+    year === "2026"
+      ? [180, 58, 62, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62, 62]
+      : [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62];
   const colgroup = (
     <colgroup>
       {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
     </colgroup>
   );
+  const spanAppAcc = year === "2026" ? 10 : 9;
 
   return (
     <div className="mb-6 space-y-6">
@@ -607,27 +708,40 @@ export default function DealerDetailTable({
           className="overflow-hidden sticky z-20 bg-white rounded-t-xl"
           style={{ top: year === "2026" ? "200px" : "120px" }}
         >
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: year === "2026" ? 1310 : 1186 }}>
           {colgroup}
         <thead>
           <tr>
             <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-[6px] border-slate-400 overflow-hidden sticky left-0 bg-[#1e3a5f] z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]" rowSpan={2}>
               (코드) 대리상명칭
             </th>
-            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-[6px] border-r-slate-400 bg-[#1e3a5f]" colSpan={9}>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-[6px] border-r-slate-400 bg-[#1e3a5f]" colSpan={spanAppAcc}>
               의류
             </th>
-            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-0 bg-[#1e3a5f]" colSpan={9}>
+            <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-white whitespace-nowrap border-b border-slate-400 border-r-0 bg-[#1e3a5f]" colSpan={spanAppAcc}>
               ACC
             </th>
           </tr>
           <tr>
             <th className={`${th} bg-sky-100 text-slate-700 border-l-[6px] border-l-slate-300`}>중분류</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
-            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입(OTB-25년누적)</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>
+              {year === "2025" ? "매입" : "매입(OTB-25년누적)"}
+            </th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매(역산)</th>
-            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th
+              className={
+                year === "2026"
+                  ? `${thNoRight} bg-sky-100 text-slate-700`
+                  : `${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`
+              }
+            >
+              {year === "2026" ? "YOY(25년역산)" : "YOY"}
+            </th>
+            {year === "2026" && (
+              <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY(25년POS)</th>
+            )}
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
             <th className="px-2 py-1.5 text-center text-[10px] font-medium tracking-wider bg-sky-100 text-slate-700 whitespace-nowrap border-b border-slate-200 border-r-[6px] border-r-slate-300">Sell Through</th>
@@ -636,8 +750,21 @@ export default function DealerDetailTable({
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>기초</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
-            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매</th>
-            <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>
+              {year === "2025" ? "판매(역산)" : "판매(실적+예상)"}
+            </th>
+            <th
+              className={
+                year === "2026"
+                  ? `${thNoRight} bg-sky-100 text-slate-700`
+                  : `${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`
+              }
+            >
+              {year === "2026" ? "YOY(25년역산)" : "YOY"}
+            </th>
+            {year === "2026" && (
+              <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY(25년POS)</th>
+            )}
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
             <th className={`${thLast} bg-sky-100 text-slate-700`}>재고주수</th>
@@ -665,6 +792,9 @@ export default function DealerDetailTable({
               <td className={tdAppPurchaseYoy}><Yoy v={totalRow.apparel.purchaseYoy ?? null} /></td>
               <td className={tdAppNoRight}><Num v={totalRow.apparel.sales} /></td>
               <td className={tdAppSalesYoy}><Yoy v={totalRow.apparel.salesYoy ?? null} /></td>
+              {year === "2026" && (
+                <td className={tdAppSalesYoyPos}><Yoy v={totalRow.apparel.salesYoyPos ?? null} /></td>
+              )}
               <td className={tdAppNoRight}><Num v={totalRow.apparel.ending} /></td>
               <td className={tdApp}><Yoy v={totalRow.apparel.endingYoy ?? null} /></td>
               <td className={tdAppSellThrough}>{totalRow.apparel.sellThrough != null ? `${totalRow.apparel.sellThrough.toFixed(1)}%` : ""}</td>
@@ -674,6 +804,9 @@ export default function DealerDetailTable({
               <td className={tdAccPurchaseYoy}><Yoy v={totalRow.acc.purchaseYoy ?? null} /></td>
               <td className={tdAccNoRight}><Num v={totalRow.acc.sales} /></td>
               <td className={tdAccSalesYoy}><Yoy v={totalRow.acc.salesYoy ?? null} /></td>
+              {year === "2026" && (
+                <td className={tdAccSalesYoyPos}><Yoy v={totalRow.acc.salesYoyPos ?? null} /></td>
+              )}
               <td className={tdAccNoRight}><Num v={totalRow.acc.ending} /></td>
               <td className={tdAcc}><Yoy v={totalRow.acc.endingYoy ?? null} /></td>
               <td className={`${tdAccLast} ${totalRow.acc.weeks != null ? (totalRow.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
@@ -689,17 +822,21 @@ export default function DealerDetailTable({
         onScroll={onBodyTableScroll}
         className="overflow-x-auto"
       >
-      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
+      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: year === "2026" ? 1310 : 1186 }}>
         {colgroup}
         <thead style={{ height: 0, visibility: "hidden" }} aria-hidden="true">
           <tr>
             <th className="min-w-[200px]" rowSpan={2} />
-            <th colSpan={9} />
-            <th colSpan={9} />
+            <th colSpan={spanAppAcc} />
+            <th colSpan={spanAppAcc} />
           </tr>
           <tr>
-            <th className="w-16" /><th /><th /><th /><th /><th /><th /><th /><th />
-            <th className="w-16" /><th /><th /><th /><th /><th /><th /><th /><th />
+            {Array.from({ length: spanAppAcc }, (_, i) => (
+              <th key={`h1-${i}`} className={i === 0 ? "w-16" : ""} />
+            ))}
+            {Array.from({ length: spanAppAcc }, (_, i) => (
+              <th key={`h2-${i}`} className={i === 0 ? "w-16" : ""} />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -716,11 +853,13 @@ export default function DealerDetailTable({
               tdSubAppBase={tdSubAppBase}
               tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
               tdSubAppSalesYoy={tdSubAppSalesYoy}
+              tdSubAppSalesYoyPos={tdSubAppSalesYoyPos}
               tdSubAppSellThrough={tdSubAppSellThrough}
               tdSubAcc={tdSubAcc}
               tdSubAccBase={tdSubAccBase}
               tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
               tdSubAccSalesYoy={tdSubAccSalesYoy}
+              tdSubAccSalesYoyPos={tdSubAccSalesYoyPos}
               tdSubAccLast={tdSubAccLast}
               tdLSub={tdLSub}
               tdLSubWithRight={tdLSubWithRight}
@@ -743,12 +882,14 @@ export default function DealerDetailTable({
               tdAppBase={tdAppBase}
               tdAppPurchaseYoy={tdAppPurchaseYoy}
               tdAppSalesYoy={tdAppSalesYoy}
+              tdAppSalesYoyPos={tdAppSalesYoyPos}
               tdAppSellThrough={tdAppSellThrough}
               tdAcc={tdAcc}
               tdAccNoRight={tdAccNoRight}
               tdAccBase={tdAccBase}
               tdAccPurchaseYoy={tdAccPurchaseYoy}
               tdAccSalesYoy={tdAccSalesYoy}
+              tdAccSalesYoyPos={tdAccSalesYoyPos}
               tdAccFirst={tdAccFirst}
               tdAccLast={tdAccLast}
               tdLBase={tdLBase}
@@ -756,11 +897,13 @@ export default function DealerDetailTable({
               tdSubAppBase={tdSubAppBase}
               tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
               tdSubAppSalesYoy={tdSubAppSalesYoy}
+              tdSubAppSalesYoyPos={tdSubAppSalesYoyPos}
               tdSubAppSellThrough={tdSubAppSellThrough}
               tdSubAcc={tdSubAcc}
               tdSubAccBase={tdSubAccBase}
               tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
               tdSubAccSalesYoy={tdSubAccSalesYoy}
+              tdSubAccSalesYoyPos={tdSubAccSalesYoyPos}
               tdSubAccLast={tdSubAccLast}
               tdLSub={tdLSub}
               tdLSubWithRight={tdLSubWithRight}
@@ -786,19 +929,34 @@ function SlotsDetailRows({
   tdSubAppBase,
   tdSubAppPurchaseYoy,
   tdSubAppSalesYoy,
+  tdSubAppSalesYoyPos,
   tdSubAppSellThrough,
   tdSubAcc,
   tdSubAccBase,
   tdSubAccPurchaseYoy,
   tdSubAccSalesYoy,
+  tdSubAccSalesYoyPos,
   tdSubAccLast,
   tdLSub,
   tdLSubWithRight,
 }: {
-  apparelCurrent: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null })[];
-  apparelYearGroups: (ApparelYearGroupDetail & { data: ApparelYearGroupDetail["data"] & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null } })[];
-  apparelOld: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }) | null;
-  accItemsDetail: { item: string; base: number; purchase: number; sales: number; ending: number; weeks: number | null; purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null }[];
+  apparelCurrent: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null; salesYoyPos?: number | null })[];
+  apparelYearGroups: (ApparelYearGroupDetail & {
+    data: ApparelYearGroupDetail["data"] & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null; salesYoyPos?: number | null };
+  })[];
+  apparelOld: (ApparelSeasonDetail & { purchaseYoy?: number | null; salesYoy?: number | null; endingYoy?: number | null; salesYoyPos?: number | null }) | null;
+  accItemsDetail: {
+    item: string;
+    base: number;
+    purchase: number;
+    sales: number;
+    ending: number;
+    weeks: number | null;
+    purchaseYoy?: number | null;
+    salesYoy?: number | null;
+    endingYoy?: number | null;
+    salesYoyPos?: number | null;
+  }[];
   yearGroupOpen: Set<string>;
   onToggleYearGroup: (label: string) => void;
   year: string;
@@ -806,16 +964,19 @@ function SlotsDetailRows({
   tdSubAppBase: string;
   tdSubAppPurchaseYoy: string;
   tdSubAppSalesYoy: string;
+  tdSubAppSalesYoyPos: string;
   tdSubAppSellThrough: string;
   tdSubAcc: string;
   tdSubAccBase: string;
   tdSubAccPurchaseYoy: string;
   tdSubAccSalesYoy: string;
+  tdSubAccSalesYoyPos: string;
   tdSubAccLast: string;
   tdLSub: string;
   tdLSubWithRight: string;
 }) {
   const showYoy = year === "2026";
+  const showPosYoyCol = year === "2026";
   const apparelSlots: ApparelSlot[] = [];
   apparelCurrent.forEach((s) => apparelSlots.push({ type: "season", data: s }));
   apparelYearGroups.forEach((grp) => {
@@ -858,6 +1019,11 @@ function SlotsDetailRows({
               <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.purchaseYoy ?? null} /> : ""}</td>
               <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.sales} /></td>
               <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.salesYoy ?? null} /> : ""}</td>
+              {showPosYoyCol && (
+                <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`}>
+                  <Yoy v={grp.data.salesYoyPos ?? null} />
+                </td>
+              )}
               <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.ending} /></td>
               <td className={`${tdSubApp} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.endingYoy ?? null} /> : ""}</td>
               <td className={`${tdSubAppSellThrough} ${cellBorder}`}>{grp.data.sellThrough != null ? `${grp.data.sellThrough.toFixed(1)}%` : ""}</td>
@@ -869,6 +1035,11 @@ function SlotsDetailRows({
                   <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : ""}</td>
                   <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
                   <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                  {showPosYoyCol && (
+                    <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`}>
+                      <Yoy v={ac.salesYoyPos ?? null} />
+                    </td>
+                  )}
                   <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.ending} /></td>
                   <td className={`${tdSubAcc} ${cellBorder}`}>{showYoy ? <Yoy v={ac.endingYoy ?? null} /> : ""}</td>
                   <td className={`${tdSubAcc} ${cellBorder} ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
@@ -882,6 +1053,7 @@ function SlotsDetailRows({
                   <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
                   <td className={`${tdSubAcc} ${cellBorder}`} />
                   <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                  {showPosYoyCol && <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`} />}
                   <td className={`${tdSubAcc} ${cellBorder}`} />
                   <td className={`${tdSubAcc} ${cellBorder}`} />
                   <td className={`${tdSubAccLast} ${cellBorder}`} />
@@ -901,6 +1073,11 @@ function SlotsDetailRows({
                 <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.purchaseYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.sales} /></td>
                 <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.salesYoy ?? null} /> : ""}</td>
+                {showPosYoyCol && (
+                  <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`}>
+                    <Yoy v={ap.data.salesYoyPos ?? null} />
+                  </td>
+                )}
                 <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.ending} /></td>
                 <td className={`${tdSubApp} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.endingYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubAppSellThrough} ${cellBorder}`}>{ap.data.sellThrough != null ? `${ap.data.sellThrough.toFixed(1)}%` : ""}</td>
@@ -912,6 +1089,7 @@ function SlotsDetailRows({
                 <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`} />
                 <td className={`${tdSubApp} ${cellBorder}`} />
                 <td className={`${tdSubAppSalesYoy} ${cellBorder}`} />
+                {showPosYoyCol && <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`} />}
                 <td className={`${tdSubApp} ${cellBorder}`} />
                 <td className={`${tdSubApp} ${cellBorder}`} />
                 <td className={`${tdSubAppSellThrough} ${cellBorder}`} />
@@ -925,6 +1103,11 @@ function SlotsDetailRows({
                 <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
                 <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                {showPosYoyCol && (
+                  <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`}>
+                    <Yoy v={ac.salesYoyPos ?? null} />
+                  </td>
+                )}
                 <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.ending} /></td>
                 <td className={`${tdSubAcc} ${cellBorder}`}>{showYoy ? <Yoy v={ac.endingYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubAcc} ${cellBorder} ${ac.weeks != null ? (ac.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
@@ -938,6 +1121,7 @@ function SlotsDetailRows({
                 <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
                 <td className={`${tdSubAcc} ${cellBorder}`} />
                 <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                {showPosYoyCol && <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`} />}
                 <td className={`${tdSubAcc} ${cellBorder}`} />
                 <td className={`${tdSubAcc} ${cellBorder}`} />
                 <td className={`${tdSubAccLast} ${cellBorder}`} />
@@ -965,12 +1149,14 @@ function DealerRow({
   tdAppBase,
   tdAppPurchaseYoy,
   tdAppSalesYoy,
+  tdAppSalesYoyPos,
   tdAppSellThrough,
   tdAcc,
   tdAccNoRight,
   tdAccBase,
   tdAccPurchaseYoy,
   tdAccSalesYoy,
+  tdAccSalesYoyPos,
   tdAccFirst,
   tdAccLast,
   tdLBase,
@@ -978,11 +1164,13 @@ function DealerRow({
   tdSubAppBase,
   tdSubAppPurchaseYoy,
   tdSubAppSalesYoy,
+  tdSubAppSalesYoyPos,
   tdSubAppSellThrough,
   tdSubAcc,
   tdSubAccBase,
   tdSubAccPurchaseYoy,
   tdSubAccSalesYoy,
+  tdSubAccSalesYoyPos,
   tdSubAccLast,
   tdLSub,
   tdLSubWithRight,
@@ -1001,12 +1189,14 @@ function DealerRow({
   tdAppBase: string;
   tdAppPurchaseYoy: string;
   tdAppSalesYoy: string;
+  tdAppSalesYoyPos: string;
   tdAppSellThrough: string;
   tdAcc: string;
   tdAccNoRight: string;
   tdAccBase: string;
   tdAccPurchaseYoy: string;
   tdAccSalesYoy: string;
+  tdAccSalesYoyPos: string;
   tdAccFirst: string;
   tdAccLast: string;
   tdLBase: string;
@@ -1014,11 +1204,13 @@ function DealerRow({
   tdSubAppBase: string;
   tdSubAppPurchaseYoy: string;
   tdSubAppSalesYoy: string;
+  tdSubAppSalesYoyPos: string;
   tdSubAppSellThrough: string;
   tdSubAcc: string;
   tdSubAccBase: string;
   tdSubAccPurchaseYoy: string;
   tdSubAccSalesYoy: string;
+  tdSubAccSalesYoyPos: string;
   tdSubAccLast: string;
   tdLSub: string;
   tdLSubWithRight: string;
@@ -1053,6 +1245,9 @@ function DealerRow({
         <td className={`${tdAppPurchaseYoy} ${borderB}`}><Yoy v={m.apparel.purchaseYoy} /></td>
         <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.sales} /></td>
         <td className={`${tdAppSalesYoy} ${borderB}`}><Yoy v={m.apparel.salesYoy} /></td>
+        {year === "2026" && (
+          <td className={`${tdAppSalesYoyPos} ${borderB}`}><Yoy v={m.apparel.salesYoyPos ?? null} /></td>
+        )}
         <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.ending} /></td>
         <td className={`${tdApp} ${borderB}`}><Yoy v={m.apparel.endingYoy} /></td>
         <td className={`${tdAppSellThrough} ${borderB}`}>
@@ -1064,6 +1259,9 @@ function DealerRow({
         <td className={`${tdAccPurchaseYoy} ${borderB}`}><Yoy v={m.acc.purchaseYoy} /></td>
         <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.sales} /></td>
         <td className={`${tdAccSalesYoy} ${borderB}`}><Yoy v={m.acc.salesYoy} /></td>
+        {year === "2026" && (
+          <td className={`${tdAccSalesYoyPos} ${borderB}`}><Yoy v={m.acc.salesYoyPos ?? null} /></td>
+        )}
         <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.ending} /></td>
         <td className={`${tdAcc} ${borderB}`}><Yoy v={m.acc.endingYoy} /></td>
         <td className={`${tdAccLast} ${borderB} ${m.acc.weeks !== null ? (m.acc.weeks >= 30 ? "text-red-500 font-semibold" : "text-violet-600") : ""}`}>
@@ -1083,11 +1281,13 @@ function DealerRow({
           tdSubAppBase={tdSubAppBase}
           tdSubAppPurchaseYoy={tdSubAppPurchaseYoy}
           tdSubAppSalesYoy={tdSubAppSalesYoy}
+          tdSubAppSalesYoyPos={tdSubAppSalesYoyPos}
           tdSubAppSellThrough={tdSubAppSellThrough}
           tdSubAcc={tdSubAcc}
           tdSubAccBase={tdSubAccBase}
           tdSubAccPurchaseYoy={tdSubAccPurchaseYoy}
           tdSubAccSalesYoy={tdSubAccSalesYoy}
+          tdSubAccSalesYoyPos={tdSubAccSalesYoyPos}
           tdSubAccLast={tdSubAccLast}
           tdLSub={tdLSub}
           tdLSubWithRight={tdLSubWithRight}

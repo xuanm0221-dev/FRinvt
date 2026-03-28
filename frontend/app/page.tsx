@@ -172,6 +172,8 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
   const tradeZoneIdx = headers.findIndex(
     (h) => h.trim().toLowerCase() === "trade zone" || h.includes("Trade Zone")
   );
+  const regionNmIdx = idxOf("region_nm");
+  const cityNmIdx = idxOf("city_nm");
 
   if (storeIdx < 0 || accIdx < 0) return {};
 
@@ -205,6 +207,8 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
       storeAreaM2:   areaVal,
       storeType:     storeTypeIdx >= 0 ? (cols[storeTypeIdx]?.trim() ?? "") : "",
       tradeZone:     tradeZoneIdx >= 0 ? (cols[tradeZoneIdx]?.trim() ?? "") : "",
+      regionNm:      regionNmIdx >= 0 ? (cols[regionNmIdx]?.trim() ?? "") : "",
+      cityNm:        cityNmIdx >= 0 ? (cols[cityNmIdx]?.trim() ?? "") : "",
     };
   }
   return result;
@@ -296,6 +300,7 @@ export default async function Home() {
   const retail2026 = loadJson<RetailData>("retail_2026.json");
   const retailPlan2026 = loadJson<RetailData>("retail_plan_2026.json");
   const retailPos2025 = loadJson<RetailData>("retail_pos_2025.json");
+  const retailDw2025 = loadJson<RetailData>("retail_dw_2025.json");
   const appOtb2026 = loadJson<AppOtbData>("app_otb_2026.json");
   const accountNameMap = loadAccountNameMap();
   const cogsRateMap = loadCogsRateMap();
@@ -323,6 +328,7 @@ export default async function Home() {
             retail2026={retail2026}
             retailPlan2026={retailPlan2026}
             retailPos2025={retailPos2025}
+            retailDw2025={retailDw2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
             cogsRateMap={cogsRateMap}

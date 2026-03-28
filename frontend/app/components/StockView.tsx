@@ -33,9 +33,13 @@ interface Props {
   retail2026: RetailData | null;
   retailPlan2026: RetailData | null;
   retailPos2025: RetailData | null;
+  /** 2025 탭 리테일매출(POS) — preprocess_retail 동일 로직, retail_dw_2025.json */
+  retailDw2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
 }
+
+type RetailSectionHeaderMode = "inverse" | "source2026" | "source2025Dw";
 
 const YEARS = ["2025", "2026"] as const;
 type Year = (typeof YEARS)[number];
@@ -347,8 +351,17 @@ function RetailPlanSectionHeader() {
   );
 }
 
-function RetailSectionHeader({ title, unit, range, activeYear }: { title: string; unit: string; range: string; activeYear: string }) {
-  const is2026 = activeYear === "2026";
+function RetailSectionHeader({
+  title,
+  unit,
+  range,
+  mode,
+}: {
+  title: string;
+  unit: string;
+  range: string;
+  mode: RetailSectionHeaderMode;
+}) {
   return (
     <div className="mb-4 flex flex-col gap-1.5">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -356,7 +369,7 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
           <span>{title}</span>
           <span className="text-slate-400">|</span>
           <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-slate-500">{unit}</span>
-          {is2026 && (
+          {mode === "source2026" && (
             <>
               <span className="text-slate-400">|</span>
               <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">python scripts/preprocess_retail.py</code>
@@ -364,18 +377,32 @@ function RetailSectionHeader({ title, unit, range, activeYear }: { title: string
               <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">python scripts/preprocess_retail.py --full</code>
             </>
           )}
+          {mode === "source2025Dw" && (
+            <>
+              <span className="text-slate-400">|</span>
+              <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">python scripts/preprocess_retail_dw_2025.py</code>
+              <span className="text-slate-400">|</span>
+              <code className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600">preprocess_retail.py</code>
+              <span className="text-slate-400">|</span>
+              <span className="text-[11px] font-normal text-slate-500">동일 쿼리·카테고리</span>
+            </>
+          )}
         </h2>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">{range}</span>
       </div>
       <p className="text-[11px] text-slate-500">
-        {is2026 ? (
+        {mode === "inverse" &&
+          "계산 로직: 월별 리테일매출 = 기초재고 + 입고물량 − 기말재고 (기초재고 = 전월 재고잔액, 기말재고 = 당월 재고잔액)"}
+        {mode === "source2026" && (
           <>
             기본: 2026 추가된 완료월만 조회 · --full: 2026 전기간 재조회 (로직 변경 시)
             <span className="ml-2 text-blue-500">
               · 계획월(F): 의류 전년동시즌 × 성장률 (26S←25S, 27S←26S), ACC 전년동월 × 성장률
             </span>
           </>
-        ) : "계산 로직: 월별 리테일매출 = 기초재고 + 입고물량 − 기말재고 (기초재고 = 전월 재고잔액, 기말재고 = 당월 재고잔액)"}
+        )}
+        {mode === "source2025Dw" &&
+          "dw_sale·tag·카테고리 집계는 2026 탭 리테일과 동일 · 본 표는 2025년 1~12월 전기간(retail_dw_2025.json)"}
       </p>
     </div>
   );
@@ -390,6 +417,7 @@ export default function StockView({
   retail2026,
   retailPlan2026,
   retailPos2025,
+  retailDw2025,
   appOtb2026,
   accountNameMap = {},
 }: Props) {
@@ -492,6 +520,7 @@ export default function StockView({
           inbound2025={inbound2025}
           stock2026={data2026}
           retail2026={blended?.data ?? retail2026}
+          retailDw2025={retailDw2025}
           inbound2026={inbound2026}
           growthRate={growthRates[selectedBrand]}
           onGrowthRateChange={(v) => setGrowthRates((prev) => ({ ...prev, [selectedBrand]: v }))}
@@ -502,18 +531,54 @@ export default function StockView({
           accountNameMap={accountNameMap}
         />
         <hr className="my-6 border-0 border-t-2 border-slate-200" />
-        <RetailSectionHeader
-          title="리테일매출"
-          unit="천위안"
-          range={`${activeYear}년 1월 ~ 12월`}
-          activeYear={activeYear}
-        />
-        {currentRetail ? (
-          <RetailTable data={currentRetail} estimatedMonths={estimatedMonths} brand={selectedBrand} />
+        {activeYear === "2025" ? (
+          <>
+            <RetailSectionHeader
+              title="리테일매출(역산)"
+              unit="천위안"
+              range="2025년 1월 ~ 12월"
+              mode="inverse"
+            />
+            {currentRetail ? (
+              <RetailTable data={currentRetail} estimatedMonths={[]} brand={selectedBrand} />
+            ) : (
+              <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
+                2025년 리테일매출(역산) 계산 불가 — 재고잔액 및 입고물량 데이터가 모두 필요합니다
+              </div>
+            )}
+            <hr className="my-6 border-0 border-t-2 border-slate-200" />
+            <RetailSectionHeader
+              title="리테일매출(POS)"
+              unit="천위안"
+              range="2025년 1월 ~ 12월"
+              mode="source2025Dw"
+            />
+            {retailDw2025 ? (
+              <RetailTable data={retailDw2025} estimatedMonths={[]} brand={selectedBrand} />
+            ) : (
+              <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-center text-sm text-slate-400">
+                <span>2025년 리테일매출(POS) 데이터 없음</span>
+                <code className="rounded bg-slate-100 px-2 py-1 text-xs">python scripts/preprocess_retail_dw_2025.py</code>
+                <span className="text-xs">실행 후 새로고침 · 결과: public/data/retail_dw_2025.json</span>
+              </div>
+            )}
+          </>
         ) : (
-          <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
-            {activeYear}년 리테일매출 계산 불가 — 재고잔액 및 입고물량 데이터가 모두 필요합니다
-          </div>
+          <>
+            <RetailSectionHeader
+              title="리테일매출"
+              unit="천위안"
+              range={`${activeYear}년 1월 ~ 12월`}
+              mode="source2026"
+            />
+            {currentRetail ? (
+              <RetailTable data={currentRetail} estimatedMonths={estimatedMonths} brand={selectedBrand} />
+            ) : (
+              <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
+                {activeYear}년 리테일매출 계산 불가 — 재고잔액 및 입고물량 데이터가 모두 필요합니다
+              </div>
+            )}
+          </>
         )}
       </div>
 

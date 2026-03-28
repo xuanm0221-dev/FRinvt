@@ -92,6 +92,10 @@ export interface StoreDirectCost {
   storeAreaM2: number;     // Store Area (㎡), FR수익구조.csv
   storeType: string;
   tradeZone: string;
+  /** FR수익구조.csv region_nm (한글 지역명 등) */
+  regionNm: string;
+  /** FR수익구조.csv city_nm (한글 도시명 등) */
+  cityNm: string;
 }
 /** store_cd → StoreDirectCost */
 export type StoreDirectCostMap = Record<string, StoreDirectCost>;

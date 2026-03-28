@@ -57,6 +57,11 @@ export interface ApparelSeasonDetail {
   purchaseYoy?: number | null;
   salesYoy?: number | null;
   endingYoy?: number | null;
+  /** 2026: dw_sale 기준 당년 시즌 POS 매출(rows) */
+  retailSalesPos?: number;
+  /** 2026: 전년 동시즌 POS 매출(retail_dw_2025) */
+  prevRetailPosSales?: number;
+  salesYoyPos?: number | null;
 }
 
 export interface AccItemDetail {
@@ -69,6 +74,8 @@ export interface AccItemDetail {
   purchaseYoy?: number | null;
   salesYoy?: number | null;
   endingYoy?: number | null;
+  salesYoyPos?: number | null;
+  prevRetailPosSales?: number;
 }
 
 export interface ApparelYearGroupDetail {
@@ -82,6 +89,9 @@ export interface ApparelYearGroupDetail {
     purchaseYoy?: number | null;
     salesYoy?: number | null;
     endingYoy?: number | null;
+    retailSalesPos?: number;
+    prevRetailPosSales?: number;
+    salesYoyPos?: number | null;
   };
   seasons: ApparelSeasonDetail[];
 }
@@ -98,6 +108,10 @@ export interface DealerAccountMetrics {
     ending: number;
     endingYoy: number | null;
     sellThrough: number | null;
+    /** 2026: 의류 POS 연매출 합(buildRows) — YOY(25년POS) 분자 합산용 */
+    retailSalesPos?: number;
+    prevRetailSalesPos?: number;
+    salesYoyPos?: number | null;
   };
   acc: {
     base: number;
@@ -108,6 +122,9 @@ export interface DealerAccountMetrics {
     ending: number;
     endingYoy: number | null;
     weeks: number | null;
+    retailSalesPos?: number;
+    prevRetailSalesPos?: number;
+    salesYoyPos?: number | null;
   };
   apparelCurrent: ApparelSeasonDetail[];
   apparelYearGroups: ApparelYearGroupDetail[];
@@ -403,7 +420,8 @@ export function computeAccountMetrics(
   appOtb: AppOtbData | null,
   year: string,
   targetWeeks: Record<string, number> = DEFAULT_TARGET_WEEKS,
-  sellThroughPct: number = 70
+  sellThroughPct: number = 70,
+  retailDw2025: RetailData | null = null
 ): DealerAccountMetrics {
   const merged = mergeAccounts(brand, stock, retail, inbound, appOtb);
   const rows = buildRows(brand, stock, stockPrev, retail, acc.account_id, merged, inbound, appOtb);
@@ -531,6 +549,39 @@ export function computeAccountMetrics(
     }
   }
 
+  const posPrevRows =
+    is2026 && retailDw2025 && stockPrev
+      ? buildRows(
+          brand,
+          stockPrev,
+          null,
+          retailDw2025,
+          acc.account_id,
+          mergeAccounts(brand, stockPrev, retailDw2025, inboundPrev),
+          inboundPrev,
+          null
+        )
+      : null;
+
+  const posPrevSalesBySeason = new Map<string, number>();
+  const posPrevAccSales = new Map<string, number>();
+  if (posPrevRows) {
+    for (const { season, data } of posPrevRows.apparelCurrent) {
+      posPrevSalesBySeason.set(season, data.sales);
+    }
+    for (const grp of posPrevRows.apparelYearGroups) {
+      for (const { season, data } of grp.seasons) {
+        posPrevSalesBySeason.set(season, data.sales);
+      }
+    }
+    if (posPrevRows.apparelOld) {
+      posPrevSalesBySeason.set("과시즌", posPrevRows.apparelOld.sales);
+    }
+    for (const { item, data } of posPrevRows.accItems) {
+      posPrevAccSales.set(item, data.sales);
+    }
+  }
+
   function yoy(curr: number, prev: number): number | null {
     if (prev === 0) return null;
     return (curr / prev) * 100;
@@ -546,6 +597,7 @@ export function computeAccountMetrics(
     const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
     const ending = data.base + purch - sales;
     const prev = prevBySeason.get(prevSeason(season));
+    const prevPs = posPrevSalesBySeason.get(prevSeason(season)) ?? 0;
     apparelCurrent.push({
       label: season,
       base: data.base,
@@ -556,6 +608,9 @@ export function computeAccountMetrics(
       purchaseYoy: prev ? yoy(purch, prev.purchase) : null,
       salesYoy: prev ? yoy(sales, prev.sales) : null,
       endingYoy: prev ? yoy(ending, prev.ending) : null,
+      retailSalesPos: sales,
+      prevRetailPosSales: prevPs,
+      salesYoyPos: posPrevRows ? yoy(sales, prevPs) : null,
     });
   }
   const apparelYearGroups: ApparelYearGroupDetail[] = [];
@@ -563,6 +618,7 @@ export function computeAccountMetrics(
     const grpSt = ST_YEAR_GROUP[grp.label] ?? sellThroughPct;
     let grpPurchase = 0;
     const seasons: ApparelSeasonDetail[] = [];
+    let grpPosPrev = 0;
     for (const { season, data } of grp.seasons) {
       const p = canCalcOtb ? sesPurchase(season) : 0;
       const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
@@ -570,6 +626,8 @@ export function computeAccountMetrics(
       const sales = useApparelFormula ? Math.round((data.base + purch) * (grpSt / 100)) : data.sales;
       const ending = data.base + purch - sales;
       const prev = prevBySeason.get(prevSeason(season));
+      grpPosPrev += posPrevSalesBySeason.get(prevSeason(season)) ?? 0;
+      const prevPs = posPrevSalesBySeason.get(prevSeason(season)) ?? 0;
       seasons.push({
         label: season,
         base: data.base,
@@ -580,6 +638,9 @@ export function computeAccountMetrics(
         purchaseYoy: prev ? yoy(purch, prev.purchase) : null,
         salesYoy: prev ? yoy(sales, prev.sales) : null,
         endingYoy: prev ? yoy(ending, prev.ending) : null,
+        retailSalesPos: sales,
+        prevRetailPosSales: prevPs,
+        salesYoyPos: posPrevRows ? yoy(sales, prevPs) : null,
       });
     }
     const grpSales = useApparelFormula ? Math.round((grp.data.base + grpPurchase) * (grpSt / 100)) : grp.data.sales;
@@ -608,6 +669,9 @@ export function computeAccountMetrics(
         purchaseYoy: hasGrpPrev ? yoy(grpPurchase, grpPrev.purchase) : null,
         salesYoy: hasGrpPrev ? yoy(grpSales, grpPrev.sales) : null,
         endingYoy: hasGrpPrev ? yoy(grpEnding, grpPrev.ending) : null,
+        retailSalesPos: grpSales,
+        prevRetailPosSales: grpPosPrev,
+        salesYoyPos: posPrevRows ? yoy(grpSales, grpPosPrev) : null,
       },
       seasons,
     });
@@ -618,6 +682,7 @@ export function computeAccountMetrics(
     const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (ST_OLD_PCT / 100)) : rows.apparelOld.sales;
     const ending = rows.apparelOld.base + oldPurch - oldSales;
     const oldPrev = prevBySeason.get("과시즌");
+    const oldPrevPs = posPrevSalesBySeason.get("과시즌") ?? 0;
     apparelOld = {
       label: "과시즌",
       base: rows.apparelOld.base,
@@ -628,6 +693,9 @@ export function computeAccountMetrics(
       purchaseYoy: oldPrev ? yoy(oldPurch, oldPrev.purchase) : null,
       salesYoy: oldPrev ? yoy(oldSales, oldPrev.sales) : null,
       endingYoy: oldPrev ? yoy(ending, oldPrev.ending) : null,
+      retailSalesPos: oldSales,
+      prevRetailPosSales: oldPrevPs,
+      salesYoyPos: posPrevRows ? yoy(oldSales, oldPrevPs) : null,
     };
   }
 
@@ -661,6 +729,7 @@ export function computeAccountMetrics(
     accEnding += ending;
     accPurchase += purch;
     const accPrev = prevByAccItem.get(item);
+    const prevAccPos = posPrevAccSales.get(item) ?? 0;
     accItemsDetail.push({
       item,
       base: data.base,
@@ -671,6 +740,8 @@ export function computeAccountMetrics(
       purchaseYoy: accPrev ? yoy(purch, accPrev.purchase) : null,
       salesYoy: accPrev ? yoy(data.sales, accPrev.sales) : null,
       endingYoy: accPrev ? yoy(ending, accPrev.ending) : null,
+      salesYoyPos: posPrevRows ? yoy(data.sales, prevAccPos) : null,
+      prevRetailPosSales: prevAccPos,
     });
   }
 
@@ -679,6 +750,10 @@ export function computeAccountMetrics(
     rows.apparel.base + apparelPurchase > 0
       ? (apparelSales / (rows.apparel.base + apparelPurchase)) * 100
       : null;
+
+  const posApparelPrev = posPrevRows?.apparel.sales ?? 0;
+  const posAccCurr = rows.acc.sales;
+  const posAccPrev = posPrevRows?.acc.sales ?? 0;
 
   return {
     account_id: acc.account_id,
@@ -692,6 +767,13 @@ export function computeAccountMetrics(
       ending: apparelEnding,
       endingYoy: yoy(apparelEnding, prevApparelEnding),
       sellThrough,
+      ...(posPrevRows
+        ? {
+            retailSalesPos: apparelSales,
+            prevRetailSalesPos: posApparelPrev,
+            salesYoyPos: yoy(apparelSales, posApparelPrev),
+          }
+        : {}),
     },
     acc: {
       base: rows.acc.base,
@@ -702,6 +784,13 @@ export function computeAccountMetrics(
       ending: accEnding,
       endingYoy: yoy(accEnding, prevAccEnding),
       weeks: accWeeks,
+      ...(posPrevRows
+        ? {
+            retailSalesPos: posAccCurr,
+            prevRetailSalesPos: posAccPrev,
+            salesYoyPos: yoy(posAccCurr, posAccPrev),
+          }
+        : {}),
     },
     apparelCurrent,
     apparelYearGroups,
