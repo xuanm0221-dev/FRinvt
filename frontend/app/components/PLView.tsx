@@ -858,6 +858,21 @@ function compareTradeZoneKpi(a: { key: string }, b: { key: string }): number {
   return sa.localeCompare(sb, "en");
 }
 
+/** Store Type KPI 표 정렬: FP → FO → 기타(가나다) → 미정 */
+function compareStoreTypeKpi(a: { key: string }, b: { key: string }): number {
+  const rank = (k: string): number => {
+    if (k === "미정") return 3;
+    const t = k.trim().toUpperCase();
+    if (t === "FP") return 0;
+    if (t === "FO") return 1;
+    return 2;
+  };
+  const ra = rank(a.key);
+  const rb = rank(b.key);
+  if (ra !== rb) return ra - rb;
+  return a.key.localeCompare(b.key, "ko");
+}
+
 // ─── 매장별 팝업 모달 ─────────────────────────────────────────────
 interface StoreModalProps {
   dealer: DealerPL;
@@ -1109,7 +1124,14 @@ function StoreModal({
 
   const storeTypeKpi = useMemo(
     () =>
-      buildGroupKpi(stores, storeRows, selectedMonth, storeDirectCostMap, (dc) => dc?.storeType?.trim() || "미정"),
+      buildGroupKpi(
+        stores,
+        storeRows,
+        selectedMonth,
+        storeDirectCostMap,
+        (dc) => dc?.storeType?.trim() || "미정",
+        compareStoreTypeKpi,
+      ),
     [stores, storeRows, selectedMonth, storeDirectCostMap],
   );
 
