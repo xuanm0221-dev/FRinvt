@@ -21,6 +21,17 @@ interface Props {
 
 type MonthOption = "annual" | number;
 type PLTableVariant = "dealer" | "store";
+
+/** PL·모달 공통: 선택 기간 기준 리테일(V+) > 0 인 매장 수 */
+function countActiveStoresForPeriod(stores: StoreRetailRow[], month: MonthOption): number {
+  return stores.filter((s) => {
+    const retail =
+      month === "annual"
+        ? MONTHS.reduce((sum, m) => sum + (s.months[m] ?? 0), 0)
+        : (s.months[month as number] ?? 0);
+    return retail > 0;
+  }).length;
+}
 /** 매장 모달 표 열 정렬 */
 type StoreTableSortKey = "name" | "retail" | "grossProfit";
 type OpenGroups = { labor: boolean; rent: boolean; other: boolean };
@@ -1220,11 +1231,8 @@ function StoreModal({
 
   const monthLabel = selectedMonth === "annual" ? "26년 합계" : `26.${String(selectedMonth).padStart(2, "0")}`;
 
-  /** 월: 당월 리테일 > 0 매장 수. 연간: Store Type별 매장수(계산용) 합 ÷ 12(월평균 슬롯). */
-  const headerStoreCount =
-    selectedMonth === "annual"
-      ? Math.round(storeTypeKpi.reduce((s, g) => s + g.count, 0) / 12)
-      : storeRows.filter((r) => r.retail > 0).length;
+  /** PL 표 `▶ N개 매장`과 동일: 선택 기간 기준 리테일(V+) > 0 인 고유 매장 수 */
+  const headerStoreCount = storeRows.filter((r) => r.retail > 0).length;
 
   const kpiOpenMonth = selectedDc ? fmtOpenMonth(selectedDc.openMonth) : "—";
   const kpiArea =
@@ -1892,6 +1900,8 @@ export default function PLView({
             <tbody className="divide-y divide-slate-100">
               {rows.map((row, i) => {
                 const gmr = plGrossMarginRate(row.retail, row.grossProfit);
+                const dealerStores = storeRetailMap[activeBrand]?.[row.accountId] ?? [];
+                const activeStoreCount = countActiveStoresForPeriod(dealerStores, selectedMonth);
                 return (
                   <tr
                     key={row.accountId}
@@ -1913,9 +1923,9 @@ export default function PLView({
                       {row.accountNameKr && <span className="text-slate-700 font-medium">{row.accountNameKr}</span>}
                       {row.accountNameKr && row.accountNameEn && <span className="text-slate-300 mx-1">|</span>}
                       {row.accountNameEn && <span className="text-slate-500">{row.accountNameEn}</span>}
-                      {(storeRetailMap[activeBrand]?.[row.accountId]?.length ?? 0) > 0 && (
+                      {activeStoreCount > 0 && (
                         <span className="ml-2 text-[10px] text-blue-400">
-                          ▶ {storeRetailMap[activeBrand][row.accountId].length}개 매장
+                          ▶ {activeStoreCount}개 매장
                         </span>
                       )}
                     </td>
