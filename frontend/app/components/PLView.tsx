@@ -1074,6 +1074,46 @@ function compareStoreTypeKpi(a: { key: string }, b: { key: string }): number {
   return a.key.localeCompare(b.key, "ko");
 }
 
+/**
+ * City tier KPI 그룹 키 정규화 — 전각 숫자·NFKC·NBSP 제거로 동일 티어가 한 행으로 묶이게 함.
+ * (표시·집계 키 동일)
+ */
+function normalizeCityTierKpiKey(raw: string | undefined | null): string {
+  if (raw == null) return "";
+  let s = raw.normalize("NFKC").replace(/\u00A0/g, " ").trim();
+  if (!s) return "";
+  s = s.replace(/[\uFF10-\uFF19]/g, (ch) =>
+    String.fromCodePoint((ch.codePointAt(0) ?? 0xff10) - 0xff10 + 0x30),
+  );
+  return s.trim();
+}
+
+function cityTierKpiKeyFn(sc: string, pl: StorePL | null, dcMap: StoreDirectCostMap): string {
+  const fromPl = normalizeCityTierKpiKey(pl?.cityTierNm);
+  if (fromPl) return fromPl;
+  const fromDc = normalizeCityTierKpiKey(dcMap[sc]?.cityTierNm);
+  return fromDc || "미정";
+}
+
+/** City tier KPI 표 정렬: T0, T1, …(숫자 오름차순) → ^T\\d+$ 아닌 값(ONLINE, Tier1 등) → 미정 */
+function compareCityTierKpi(a: { key: string }, b: { key: string }): number {
+  const rank = (k: string): [number, number, string] => {
+    const t = k.trim();
+    if (t === "미정") return [2, 0, t];
+    const m = /^T(\d+)$/i.exec(t);
+    if (m) return [0, parseInt(m[1], 10), t];
+    return [1, 0, t];
+  };
+  const [ra, na, sa] = rank(a.key);
+  const [rb, nb, sb] = rank(b.key);
+  if (ra !== rb) return ra - rb;
+  if (ra === 0) {
+    if (na !== nb) return na - nb;
+    return sa.localeCompare(sb, undefined, { sensitivity: "base", numeric: true });
+  }
+  return sa.localeCompare(sb, undefined, { sensitivity: "base", numeric: true });
+}
+
 /** 매장 모달 상단 점당 KPI 표 (그룹별 동일 레이아웃) */
 interface PlModalGroupKpiRow {
   key: string;
@@ -1494,7 +1534,8 @@ function StoreModal({
         storeRows,
         selectedMonth,
         storeDirectCostMap,
-        (sc, pl) => pl?.cityTierNm?.trim() || storeDirectCostMap[sc]?.cityTierNm?.trim() || "미정",
+        (sc, pl) => cityTierKpiKeyFn(sc, pl, storeDirectCostMap),
+        compareCityTierKpi,
       ),
     [csvStores, storeRows, selectedMonth, storeDirectCostMap],
   );
