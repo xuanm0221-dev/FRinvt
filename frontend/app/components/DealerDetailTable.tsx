@@ -631,7 +631,7 @@ export default function DealerDetailTable({
       {year === "2026" && (
         <div className="sticky top-[120px] z-20 rounded-xl border border-slate-200/80 bg-white overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
-            <span className="text-xs text-white">리테일성장률(ACC만적용)</span>
+            <span className="text-xs text-white">리테일성장율(ACC 계획월만 적용)</span>
             <input
               type="number"
               min={0}

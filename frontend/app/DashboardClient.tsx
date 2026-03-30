@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
-import StockView, { type AccountNameMap } from "./components/StockView";
+import { useState, useEffect } from "react";
+import { BrandKey, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
+import StockView, { type AccountNameMap, DEFAULT_GROWTH } from "./components/StockView";
+import StockSimuView from "./components/StockSimuView";
 import PLView from "./components/PLView";
-import { TableIcon, ChartBarIcon } from "./components/Icons";
+import { TableIcon, ChartBarIcon, LayoutDashboardIcon, Square2StackIcon } from "./components/Icons";
+import { DEFAULT_TARGET_WEEKS } from "../lib/dealerMetrics";
 
 interface Props {
   data2025: StockData | null;
@@ -26,7 +28,9 @@ interface Props {
 }
 
 const TABS = [
-  { id: "stock", label: "재고자산", Icon: TableIcon },
+  { id: "overview", label: "종합분석", Icon: LayoutDashboardIcon },
+  { id: "stock", label: "재고자산(목표)", Icon: TableIcon },
+  { id: "stockSimu", label: "재고자산(PL기준)", Icon: Square2StackIcon },
   { id: "pl", label: "PL", Icon: ChartBarIcon },
 ] as const;
 
@@ -51,6 +55,18 @@ export default function DashboardClient({
   actualCogsRateMap = null,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
+
+  // 목표 탭·simu 탭 공유 state
+  const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
+  const [targetWeeks, setTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
+  const [sellThrough, setSellThrough] = useState(70);
+
+  useEffect(() => {
+    fetch("/data/growth_rates_default.json")
+      .then((r) => r.json())
+      .then(setGrowthRates)
+      .catch(() => {});
+  }, []);
 
   return (
     <div>
@@ -81,6 +97,30 @@ export default function DashboardClient({
       </header>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        {activeTab === "overview" && (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-20 text-center">
+            <p className="text-sm font-medium text-slate-600">종합분석</p>
+            <p className="mt-2 text-xs text-slate-500">
+              재고자산(목표)·재고자산(PL기준)·PL 연계 분석은 이후 이 탭에 추가 예정입니다.
+            </p>
+          </div>
+        )}
+        {activeTab === "stockSimu" && (
+          <StockSimuView
+            data2025={data2025}
+            data2026={data2026}
+            inbound2025={inbound2025}
+            inbound2026={inbound2026}
+            retail2026={retail2026}
+            appOtb2026={appOtb2026}
+            storeRetailMap={storeRetailMap}
+            accountNameMap={accountNameMap}
+            growthRates={growthRates}
+            targetWeeks={targetWeeks}
+            sellThrough={sellThrough}
+            retailDw2025={retailDw2025}
+          />
+        )}
         {activeTab === "stock" && (
           <StockView
             data2025={data2025}
@@ -93,6 +133,12 @@ export default function DashboardClient({
             retailDw2025={retailDw2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
+            growthRates={growthRates}
+            onGrowthRatesChange={setGrowthRates}
+            targetWeeks={targetWeeks}
+            onTargetWeeksChange={setTargetWeeks}
+            sellThrough={sellThrough}
+            onSellThroughChange={setSellThrough}
           />
         )}
         {activeTab === "pl" && (

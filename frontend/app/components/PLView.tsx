@@ -345,14 +345,14 @@ function PlCalcLogicModal({
       role="presentation"
     >
       <div
-        className="relative w-full max-w-3xl max-h-[min(85vh,640px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
+        className="relative w-full max-w-[min(96rem,98vw)] max-h-[min(90vh,1280px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pl-calc-logic-title"
       >
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
-          <h3 id="pl-calc-logic-title" className="text-sm font-bold text-slate-800">
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
+          <h3 id="pl-calc-logic-title" className="text-base font-bold text-slate-800">
             계산 로직 <span className="text-slate-500 font-normal">({ctx.monthLabel})</span>
           </h3>
           <button
@@ -366,8 +366,8 @@ function PlCalcLogicModal({
             </svg>
           </button>
         </div>
-        <div className="overflow-y-auto px-4 py-3 text-left">
-          <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed list-none">{items}</ul>
+        <div className="overflow-y-auto px-5 py-4 text-left">
+          <ul className="space-y-3 text-sm text-slate-600 leading-relaxed list-none">{items}</ul>
         </div>
       </div>
     </div>

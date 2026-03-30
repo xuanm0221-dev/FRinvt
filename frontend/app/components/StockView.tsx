@@ -37,6 +37,13 @@ interface Props {
   retailDw2025: RetailData | null;
   appOtb2026: AppOtbData | null;
   accountNameMap?: AccountNameMap;
+  /** DashboardClient에서 공유 state를 제어할 때 사용 (미전달 시 내부 state로 동작) */
+  growthRates?: Record<BrandKey, number>;
+  onGrowthRatesChange?: (rates: Record<BrandKey, number>) => void;
+  targetWeeks?: Record<string, number>;
+  onTargetWeeksChange?: (weeks: Record<string, number>) => void;
+  sellThrough?: number;
+  onSellThroughChange?: (v: number) => void;
 }
 
 type RetailSectionHeaderMode = "inverse" | "source2026" | "source2025Dw";
@@ -44,7 +51,7 @@ type RetailSectionHeaderMode = "inverse" | "source2026" | "source2025Dw";
 const YEARS = ["2025", "2026"] as const;
 type Year = (typeof YEARS)[number];
 
-const DEFAULT_GROWTH: Record<BrandKey, number> = {
+export const DEFAULT_GROWTH: Record<BrandKey, number> = {
   MLB: 100,
   "MLB KIDS": 100,
   DISCOVERY: 100,
@@ -76,7 +83,7 @@ const ACC_ORDER = ["신발", "모자", "가방", "기타"];
 const CAT_ORDER: Record<string, number> = { 의류: 0, ACC: 1 };
 
 // ─── 2025 기준 리테일 계산 ────────────────────
-function calcRetail(stock: StockData, inbound: InboundData): RetailData {
+export function calcRetail(stock: StockData, inbound: InboundData): RetailData {
   const brands: Record<string, RetailRow[]> = {};
 
   BRAND_ORDER.forEach((brand: BrandKey) => {
@@ -149,7 +156,7 @@ function calcRetail(stock: StockData, inbound: InboundData): RetailData {
 }
 
 // ─── 2026 예상매출 혼합 ───────────────────────
-function blendRetail(
+export function blendRetail(
   actual2026: RetailData,
   retail2025calc: RetailData,
   growthRates: Record<BrandKey, number>
@@ -420,19 +427,30 @@ export default function StockView({
   retailDw2025,
   appOtb2026,
   accountNameMap = {},
+  growthRates: growthRatesProp,
+  onGrowthRatesChange,
+  targetWeeks: targetWeeksProp,
+  onTargetWeeksChange,
+  sellThrough: sellThroughProp,
+  onSellThroughChange,
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
-  const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
-  const [targetWeeks, setTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
-  const [sellThrough, setSellThrough] = useState(70);
+  const [internalGrowthRates, setInternalGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
+  const [internalTargetWeeks, setInternalTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
+  const [internalSellThrough, setInternalSellThrough] = useState(70);
+
+  const growthRates = growthRatesProp ?? internalGrowthRates;
+  const targetWeeks = targetWeeksProp ?? internalTargetWeeks;
+  const sellThrough = sellThroughProp ?? internalSellThrough;
 
   useEffect(() => {
+    if (growthRatesProp !== undefined) return;
     fetch("/data/growth_rates_default.json")
       .then((r) => r.json())
-      .then(setGrowthRates)
+      .then(setInternalGrowthRates)
       .catch(() => {});
-  }, []);
+  }, [growthRatesProp]);
 
   const currentInbound =
     activeYear === "2025"
@@ -523,11 +541,22 @@ export default function StockView({
           retailDw2025={retailDw2025}
           inbound2026={inbound2026}
           growthRate={growthRates[selectedBrand]}
-          onGrowthRateChange={(v) => setGrowthRates((prev) => ({ ...prev, [selectedBrand]: v }))}
+          onGrowthRateChange={(v) => {
+            const next = { ...growthRates, [selectedBrand]: v };
+            if (onGrowthRatesChange) onGrowthRatesChange(next);
+            else setInternalGrowthRates(next);
+          }}
           targetWeeks={targetWeeks}
-          onTargetWeeksChange={(item, v) => setTargetWeeks((prev) => ({ ...prev, [item]: v }))}
+          onTargetWeeksChange={(item, v) => {
+            const next = { ...targetWeeks, [item]: v };
+            if (onTargetWeeksChange) onTargetWeeksChange(next);
+            else setInternalTargetWeeks(next);
+          }}
           sellThrough={sellThrough}
-          onSellThroughChange={setSellThrough}
+          onSellThroughChange={(v) => {
+            if (onSellThroughChange) onSellThroughChange(v);
+            else setInternalSellThrough(v);
+          }}
           accountNameMap={accountNameMap}
         />
         <hr className="my-6 border-0 border-t-2 border-slate-200" />
