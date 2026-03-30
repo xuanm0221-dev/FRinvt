@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import DashboardClient from "./DashboardClient";
-import { StockData, InboundData, RetailData, AppOtbData, BRAND_ORDER, StoreRetailMap, StoreDirectCostMap } from "../lib/types";
+import { StockData, InboundData, RetailData, AppOtbData, BRAND_ORDER, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
 import path from "path";
 import fs from "fs";
 
@@ -68,6 +68,66 @@ function parseCsvRow(line: string): string[] {
   return out;
 }
 
+/** brd_cd × account_id × month → 출고율 맵 로딩 (2026_FR_출고율.csv, 실적 전용) */
+function loadActualCogsRateMap(): Record<string, Record<string, Record<number, number>>> {
+  const candidates = [
+    path.join(process.cwd(), "2026_FR_출고율.csv"),
+    path.join(process.cwd(), "..", "2026_FR_출고율.csv"),
+    path.join(process.cwd(), "..", "..", "2026_FR_출고율.csv"),
+  ];
+  let raw: string | null = null;
+  for (const p of candidates) {
+    try { raw = fs.readFileSync(p, "utf-8"); break; } catch { continue; }
+  }
+  if (!raw) return {};
+
+  const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return {};
+  const headers = lines[0].split(",").map((h) => h.trim());
+
+  const brdIdx  = headers.indexOf("brd_cd");
+  const accIdx  = headers.indexOf("account_id");
+  // 1월~12월 컬럼 인덱스
+  const monthIdxs: Record<number, number> = {};
+  for (let m = 1; m <= 12; m++) {
+    const i = headers.indexOf(`${m}월`);
+    if (i >= 0) monthIdxs[m] = i;
+  }
+  if (brdIdx < 0 || accIdx < 0) return {};
+
+  const result: Record<string, Record<string, Record<number, number>>> = {};
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",").map((c) => c.trim());
+    const brd = cols[brdIdx] ?? "";
+    const acc = cols[accIdx] ?? "";
+    if (!brd) continue;
+    if (!result[brd]) result[brd] = {};
+    const key = acc || "평균";
+    if (!result[brd][key]) result[brd][key] = {};
+    for (const [m, idx] of Object.entries(monthIdxs)) {
+      const v = parseFloat(cols[idx] ?? "");
+      if (!isNaN(v) && v > 0) result[brd][key][Number(m)] = v;
+    }
+  }
+
+  // 값이 없는 계정·월은 브랜드 평균으로 채움
+  for (const brd of Object.keys(result)) {
+    const avgMap = result[brd]["평균"] ?? {};
+    for (const acc of Object.keys(result[brd])) {
+      if (acc === "평균") continue;
+      for (const m of Object.keys(monthIdxs).map(Number)) {
+        if (!(result[brd][acc][m] > 0)) {
+          const fallback = avgMap[m];
+          if (fallback > 0) result[brd][acc][m] = fallback;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 /** brd_cd × account_id → 출고율 맵 로딩 (2025_FR_출고율.csv) */
 function loadCogsRateMap(): Record<string, Record<string, number>> {
   const candidates = [
@@ -123,10 +183,15 @@ function parseNum(s: string): number {
  * 컬럼 레이아웃 (0-based):
  *  0 account_id | 3 store_cd | 5 매장인원수 | 6 임차료
  *  8 인테리어   | 9 평균급여  | 10 보험율   | 11 bonus(매출기준%)
- * 15 Open Month | 16 Amortization end Month | 17 Closed Month
+ * 15 Open Month | 16 Amortization end Month | 17 Closed Month | … Remodeling end Month (감가 종료월 우선)
  * Store Area (㎡)
  */
-function loadStoreDirectCostMap(): StoreDirectCostMap {
+function loadCityTierMap(): Record<string, string> {
+  const m = loadJson<Record<string, string>>("city_tier_map.json");
+  return m && typeof m === "object" ? m : {};
+}
+
+function loadStoreDirectCostMap(cityTierByCityCn: Record<string, string> = {}): StoreDirectCostMap {
   const candidates = [
     path.join(process.cwd(), "FR수익구조.csv"),
     path.join(process.cwd(), "..", "FR수익구조.csv"),
@@ -152,6 +217,7 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
   const accIdx   = idxOf("account_id");
   const storeIdx = idxOf("store_cd");
   const openIdx  = idxOf("Open Month");
+  const remodelEndIdx = idxOf("Remodeling end Month");
   const amortIdx = idxOf("Amortization end Month");
   const closedIdx = idxOf("Closed Month");
   const storeAreaHeaderIdx = idxOf("Store Area");
@@ -174,6 +240,7 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
   );
   const regionNmIdx = idxOf("region_nm");
   const cityNmIdx = idxOf("city_nm");
+  const cityCnIdx = idxOf("城市");
 
   if (storeIdx < 0 || accIdx < 0) return {};
 
@@ -185,11 +252,23 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
     if (!storeCode || !accountId) continue;
 
     const openRaw   = parseInt(cols[openIdx]?.trim()   ?? "0", 10);
-    const amortRaw  = parseInt(cols[amortIdx]?.trim()  ?? "0", 10);
+    const remodelRaw =
+      remodelEndIdx >= 0 ? parseInt(cols[remodelEndIdx]?.trim() ?? "0", 10) : NaN;
+    const amortRaw  = amortIdx >= 0 ? parseInt(cols[amortIdx]?.trim() ?? "0", 10) : NaN;
+    const deprEndRaw =
+      !isNaN(remodelRaw) && remodelRaw > 0
+        ? remodelRaw
+        : !isNaN(amortRaw) && amortRaw > 0
+          ? amortRaw
+          : 0;
     const closedRaw = parseInt(cols[closedIdx]?.trim() ?? "0", 10);
 
     const areaVal =
       areaIdx >= 0 ? parseNum(cols[areaIdx] ?? "0") : 0;
+
+    const cityCn = cityCnIdx >= 0 ? (cols[cityCnIdx]?.trim() ?? "") : "";
+    const cityTierNm =
+      cityCn && cityTierByCityCn[cityCn] ? cityTierByCityCn[cityCn] : "";
 
     result[storeCode] = {
       storeCode,
@@ -202,13 +281,14 @@ function loadStoreDirectCostMap(): StoreDirectCostMap {
       insuranceRate: parseNum(cols[insIdx]   ?? "0"),
       commissionRate: commissionIdx >= 0 ? parseNum(cols[commissionIdx] ?? "0") : 0,
       openMonth:     isNaN(openRaw)   ? 0 : openRaw,
-      amortEndMonth: isNaN(amortRaw)  ? 0 : amortRaw,
+      amortEndMonth: deprEndRaw,
       closedMonth:   closedRaw > 0   ? closedRaw : null,
       storeAreaM2:   areaVal,
       storeType:     storeTypeIdx >= 0 ? (cols[storeTypeIdx]?.trim() ?? "") : "",
       tradeZone:     tradeZoneIdx >= 0 ? (cols[tradeZoneIdx]?.trim() ?? "") : "",
       regionNm:      regionNmIdx >= 0 ? (cols[regionNmIdx]?.trim() ?? "") : "",
       cityNm:        cityNmIdx >= 0 ? (cols[cityNmIdx]?.trim() ?? "") : "",
+      cityTierNm:    cityTierNm || undefined,
     };
   }
   return result;
@@ -302,10 +382,13 @@ export default async function Home() {
   const retailPos2025 = loadJson<RetailData>("retail_pos_2025.json");
   const retailDw2025 = loadJson<RetailData>("retail_dw_2025.json");
   const appOtb2026 = loadJson<AppOtbData>("app_otb_2026.json");
+  const retailStore2026 = loadJson<RetailStoreData>("retail_store_2026.json");
+  const actualCogsRateMap = loadActualCogsRateMap();
   const accountNameMap = loadAccountNameMap();
   const cogsRateMap = loadCogsRateMap();
   const storeRetailMap = loadStoreRetailMap();
-  const storeDirectCostMap = loadStoreDirectCostMap();
+  const cityTierMap = loadCityTierMap();
+  const storeDirectCostMap = loadStoreDirectCostMap(cityTierMap);
   const retailYoy2025Raw = loadJson<{ year: number; stores: Record<string, Record<string, number>> }>("retail_yoy_2025.json");
   const retailYoy2025Map: Record<string, Record<number, number>> | null = retailYoy2025Raw
     ? Object.fromEntries(
@@ -335,6 +418,8 @@ export default async function Home() {
             storeRetailMap={storeRetailMap}
             storeDirectCostMap={storeDirectCostMap}
             retailYoy2025Map={retailYoy2025Map}
+            retailStore2026={retailStore2026}
+            actualCogsRateMap={actualCogsRateMap}
           />
         </Suspense>
       </main>

@@ -87,7 +87,8 @@ export interface StoreDirectCost {
   insuranceRate: number;   // 보험율 decimal
   commissionRate: number;  // 수수료율 decimal (변동임차)
   openMonth: number;       // e.g. 202601
-  amortEndMonth: number;   // e.g. 202801
+  /** 감가 종료 yyyyMM — CSV Remodeling end Month 우선, 비어 있으면 Amortization end Month */
+  amortEndMonth: number;
   closedMonth: number | null;
   storeAreaM2: number;     // Store Area (㎡), FR수익구조.csv
   storeType: string;
@@ -96,6 +97,8 @@ export interface StoreDirectCost {
   regionNm: string;
   /** FR수익구조.csv city_nm (한글 도시명 등) */
   cityNm: string;
+  /** city_tier_map.json — CSV 城市 → MST_SHOP_ALL.city_nm 매칭 */
+  cityTierNm?: string;
 }
 /** store_cd → StoreDirectCost */
 export type StoreDirectCostMap = Record<string, StoreDirectCost>;
@@ -109,6 +112,33 @@ export interface StoreRetailRow {
 }
 /** brand → account_id → StoreRetailRow[] */
 export type StoreRetailMap = Record<string, Record<string, StoreRetailRow[]>>;
+
+// ─── PL 실적 매장 단위 (retail_store_2026.json) ──────────────────
+export interface RetailStoreRow {
+  storeCode: string;      // MST_SHOP_ALL.shop_id (= FR수익구조 store_cd)
+  /** MST_SHOP_ALL.shop_nm_en — 전처리 후 JSON에 포함 */
+  shopNmEn?: string;
+  /** MST_SHOP_ALL.shop_nm_cn */
+  shopNmCn?: string;
+  /** MST_SHOP_ALL.city_tier_nm */
+  cityTierNm?: string;
+  storeType: string;      // anlys_shop_type_nm (FO/FP/Pop-up 등)
+  tradeZone: string;      // trade_zone_nm (H/F1 등)
+  regionCd: string;       // sale_region_cd (중국어)
+  regionKr: string;       // region_nm (한국어, FR수익구조.csv 매핑)
+  months: Record<string, number>;       // 월별 tag_amt
+  months_sale: Record<string, number>;  // 월별 sale_amt (리테일V+)
+}
+
+export interface RetailStoreAccount {
+  account_id: string;
+  stores: RetailStoreRow[];
+}
+
+export interface RetailStoreData {
+  year: string;
+  brands: Record<string, RetailStoreAccount[]>;
+}
 
 // ─── 의류 OTB (app_otb_2026.json) ────────────────────────────────
 export interface AppOtbSeasonData {
