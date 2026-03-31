@@ -11,9 +11,13 @@ import {
   MONTHS,
   StoreRetailMap,
 } from "../../lib/types";
-import { computeAccountMetrics, mergeAccounts } from "../../lib/dealerMetrics";
+import {
+  computeAccountMetrics,
+  mergeAccounts,
+  type SellThroughRates,
+} from "../../lib/dealerMetrics";
 import { calcRetail, blendRetail } from "./StockView";
-import { fmtAmt } from "../../lib/utils";
+import { fmtAmt, dealerDisplayName } from "../../lib/utils";
 import type { AccountNameMap } from "./StockView";
 import { ChevronDownIcon, ChevronRightIcon } from "./Icons";
 
@@ -28,7 +32,7 @@ interface Props {
   accountNameMap: AccountNameMap;
   growthRates: Record<BrandKey, number>;
   targetWeeks: Record<string, number>;
-  sellThrough: number;
+  sellThroughRates: SellThroughRates;
   retailDw2025: RetailData | null;
 }
 
@@ -93,7 +97,7 @@ export default function StockSimuView({
   accountNameMap,
   growthRates,
   targetWeeks,
-  sellThrough,
+  sellThroughRates,
   retailDw2025,
 }: Props) {
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
@@ -109,9 +113,9 @@ export default function StockSimuView({
   const blended2026 = useMemo(
     () =>
       retail2026 && retail2025calc
-        ? blendRetail(retail2026, retail2025calc, growthRates).data
+        ? blendRetail(retail2026, retail2025calc, growthRates, retailDw2025).data
         : null,
-    [retail2026, retail2025calc, growthRates]
+    [retail2026, retail2025calc, growthRates, retailDw2025]
   );
 
   // 브랜드별 simu 행 계산
@@ -153,7 +157,8 @@ export default function StockSimuView({
         appOtb2026,
         "2026",
         targetWeeks,
-        sellThrough
+        sellThroughRates,
+        retailDw2025
       );
       const apparelPurchase = m26.apparel.purchase;
       const accPurchase = m26.acc.purchase;
@@ -215,7 +220,7 @@ export default function StockSimuView({
     storeRetailMap,
     accountNameMap,
     targetWeeks,
-    sellThrough,
+    sellThroughRates,
     retailDw2025,
   ]);
 
@@ -378,7 +383,9 @@ export default function StockSimuView({
                   </td>
                 </tr>
 
-                {rows.filter((r) => r.base + r.apparelPurchase + r.accPurchase + r.plSales > 10).map((r) => (
+                {rows.filter((r) => r.base + r.apparelPurchase + r.accPurchase + r.plSales > 10).map((r) => {
+                  const rowNameLabel = dealerDisplayName(r.nameKr, r.nameEn);
+                  return (
                   <tr
                     key={r.accountId}
                     className="border-b border-slate-100 transition-colors hover:bg-slate-50/60"
@@ -386,12 +393,16 @@ export default function StockSimuView({
                     <td className="px-3 py-2 text-left">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] text-slate-400">({r.accountId})</span>
-                        {r.nameKr && (
+                        {rowNameLabel && (
                           <span
                             className="text-sm font-bold text-slate-800 cursor-default"
-                            title={r.nameEn || undefined}
+                            title={
+                              r.nameKr.trim()
+                                ? r.nameEn.trim() || undefined
+                                : undefined
+                            }
                           >
-                            {r.nameKr}
+                            {rowNameLabel}
                           </span>
                         )}
                       </div>
@@ -442,7 +453,8 @@ export default function StockSimuView({
                       {fmtYoy(r.ending, r.base)}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

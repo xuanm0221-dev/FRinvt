@@ -10,6 +10,8 @@ import {
   prevSeason,
   ACC_ORDER,
   DEFAULT_TARGET_WEEKS,
+  DEFAULT_SELL_THROUGH_RATES,
+  type SellThroughRates,
   DealerAccountMetrics,
   ApparelSeasonDetail,
   ApparelYearGroupDetail,
@@ -38,8 +40,9 @@ interface Props {
   onGrowthRateChange?: (v: number) => void;
   targetWeeks?: Record<string, number>;
   onTargetWeeksChange?: (item: string, v: number) => void;
-  sellThrough?: number;
-  onSellThroughChange?: (v: number) => void;
+  /** 2026 탭 의류 Sell through % (시즌·연차·과시즌) */
+  sellThroughRates?: SellThroughRates;
+  onSellThroughRatesChange?: (next: SellThroughRates) => void;
   accountNameMap?: Record<string, { account_nm_en: string; account_nm_kr: string }>;
 }
 
@@ -79,11 +82,12 @@ export default function DealerDetailTable({
   onGrowthRateChange,
   targetWeeks: targetWeeksProp,
   onTargetWeeksChange,
-  sellThrough = 70,
-  onSellThroughChange,
+  sellThroughRates: sellThroughRatesProp,
+  onSellThroughRatesChange,
   accountNameMap,
 }: Props) {
   const targetWeeks = targetWeeksProp ?? DEFAULT_TARGET_WEEKS;
+  const sellThroughRates = sellThroughRatesProp ?? DEFAULT_SELL_THROUGH_RATES;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [yearGroupOpen, setYearGroupOpen] = useState<Record<string, Set<string>>>({});
   const headScrollRef = useRef<HTMLDivElement>(null);
@@ -141,24 +145,29 @@ export default function DealerDetailTable({
       inbound ?? inbound2026 ?? inbound2025 ?? null,
       appOtb
     );
-    const all2025 = (stock2025 ?? stock) && (retail2025 ?? retail)
-      ? merged.map((acc) =>
-          computeAccountMetrics(
-            acc,
-            brand,
-            stock2025 ?? stock!,
-            null,
-            retail2025 ?? retail!,
-            null,
-            inbound2025 ?? inbound ?? null,
-            null,
-            null,
-            "2025",
-            targetWeeks,
-            sellThrough
+    /** 2025 탭: 부모 retail(POS 우선) 사용 · 2026 탭의 전년지표: 역산 retail2025 우선(26년 blended retail 제외) */
+    const canBuildAll2025 = !!(stock2025 ?? stock) && !!(retail2025 ?? retail);
+    const retailForAll2025 =
+      year === "2025" ? (retail ?? retail2025) : (retail2025 ?? retail);
+    const all2025 =
+      canBuildAll2025 && retailForAll2025
+        ? merged.map((acc) =>
+            computeAccountMetrics(
+              acc,
+              brand,
+              stock2025 ?? stock!,
+              null,
+              retailForAll2025,
+              null,
+              inbound2025 ?? inbound ?? null,
+              null,
+              null,
+              "2025",
+              targetWeeks,
+              sellThroughRates
+            )
           )
-        )
-      : [];
+        : [];
     const all2026 = (stock2026 ?? stock) && (retail2026 ?? retail)
       ? merged.map((acc) =>
           computeAccountMetrics(
@@ -173,14 +182,14 @@ export default function DealerDetailTable({
             appOtb,
             "2026",
             targetWeeks,
-            sellThrough,
+            sellThroughRates,
             retailDw2025
           )
         )
       : [];
     const curr = year === "2026"
-      ? (all2026.length > 0 ? all2026 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, "2026", targetWeeks, sellThrough, retailDw2025)))
-      : (all2025.length > 0 ? all2025 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, year, targetWeeks, sellThrough)));
+      ? (all2026.length > 0 ? all2026 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, "2026", targetWeeks, sellThroughRates, retailDw2025)))
+      : (all2025.length > 0 ? all2025 : merged.map((acc) => computeAccountMetrics(acc, brand, stock!, stockPrev, retail!, retailPrev, inbound!, inboundPrev, appOtb, year, targetWeeks, sellThroughRates)));
     const filtered =
       year === "2026"
         ? curr.filter((m) => m.apparel.ending + m.acc.ending > 0)
@@ -207,7 +216,7 @@ export default function DealerDetailTable({
     appOtb,
     year,
     targetWeeks,
-    sellThrough,
+    sellThroughRates,
   ]);
 
   const totalRow = useMemo(() => {
@@ -614,81 +623,157 @@ export default function DealerDetailTable({
   const tdL = `${tdLBase} bg-white`;
   const tdLTotal = "px-2 py-1.5 text-left text-xs text-slate-700 border-b border-slate-200 border-r-[6px] border-r-slate-300 overflow-hidden sticky left-0 bg-slate-100 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)] font-semibold";
 
-  // 2025: name + 의류9 + ACC9 | 2026: + YOY(25년POS) 각 구역당 1열
+  // 2025: name + 의류9 + ACC9 | 2026: 의류9+ACC9 (판매 옆 YOY(25년POS)만, 역산 YOY 열 없음)
   const COL_WIDTHS =
     year === "2026"
-      ? [180, 58, 62, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62, 62]
+      ? [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62]
       : [180, 58, 62, 62, 62, 62, 62, 62, 62, 78, 58, 62, 62, 62, 62, 62, 62, 62, 62];
   const colgroup = (
     <colgroup>
       {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
     </colgroup>
   );
-  const spanAppAcc = year === "2026" ? 10 : 9;
+  const spanAppAcc = 9;
 
   return (
     <div className="mb-6 space-y-6">
       {year === "2026" && (
         <div className="sticky top-[120px] z-20 rounded-xl border border-slate-200/80 bg-white overflow-hidden">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
-            <span className="text-xs text-white">리테일성장율(ACC 계획월만 적용)</span>
-            <input
-              type="number"
-              min={0}
-              max={999}
-              value={growthRate}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v)) onGrowthRateChange?.(v);
-              }}
-              className="h-6 w-14 rounded border border-white/30 bg-white/10 px-1.5 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
-            />
-            <span className="text-xs text-white/80">%</span>
-            <span className="text-white/50">|</span>
-            <span className="text-xs text-white">목표재고주수:</span>
-            {ACC_ORDER.map((item, i) => (
-              <span key={item} className="inline-flex items-center gap-1">
-                {i > 0 && <span className="text-white/50">,</span>}
-                <span className="text-xs text-white/90">{item}</span>
+          <div className="flex flex-wrap items-stretch gap-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
+            <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs text-white">리테일성장율(ACC 계획월만 적용)</span>
+              <input
+                type="number"
+                min={0}
+                max={999}
+                value={growthRate}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (!isNaN(v)) onGrowthRateChange?.(v);
+                }}
+                className="h-6 w-14 rounded border border-white/30 bg-white/10 px-1.5 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+              />
+              <span className="text-xs text-white/80">%</span>
+            </div>
+            <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs text-white">목표재고주수:</span>
+              {ACC_ORDER.map((item, i) => (
+                <span key={item} className="inline-flex items-center gap-1">
+                  {i > 0 && <span className="text-white/50">,</span>}
+                  <span className="text-xs text-white/90">{item}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={targetWeeks[item] ?? ""}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v)) onTargetWeeksChange?.(item, Math.round(v));
+                    }}
+                    className="h-6 w-10 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+                  />
+                  <span className="text-[10px] text-white/70">주</span>
+                </span>
+              ))}
+            </div>
+            <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1">
+              <span className="text-xs font-semibold text-white shrink-0">Sell through(의류) %</span>
+            {(["27S", "26F", "26S"] as const).map((sesn) => (
+              <span key={sesn} className="inline-flex items-center gap-1">
+                <span className="text-[10px] text-white/90">{sesn}</span>
                 <input
                   type="number"
                   min={0}
+                  max={100}
                   step={1}
-                  value={targetWeeks[item] ?? ""}
+                  value={sellThroughRates.bySeason[sesn] ?? ""}
                   onChange={(e) => {
                     const v = parseFloat(e.target.value);
-                    if (!isNaN(v)) onTargetWeeksChange?.(item, Math.round(v));
+                    if (isNaN(v) || !onSellThroughRatesChange) return;
+                    onSellThroughRatesChange({
+                      ...sellThroughRates,
+                      bySeason: { ...sellThroughRates.bySeason, [sesn]: Math.min(100, Math.max(0, v)) },
+                    });
                   }}
-                  className="h-6 w-10 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+                  className="h-6 w-11 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
                 />
-                <span className="text-[10px] text-white/70">주</span>
+                <span className="text-[10px] text-white/70">%</span>
               </span>
             ))}
-            <span className="text-white/50">|</span>
-            <span className="text-xs text-white">Sell through</span>
-            <span className="text-[10px] text-white/60">당시즌·차기시즌</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={sellThrough}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v)) onSellThroughChange?.(v);
-              }}
-              className="h-6 w-14 rounded border border-white/30 bg-white/10 px-1.5 py-0 text-right text-xs tabular-nums text-white placeholder-white/60 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
-            />
-            <span className="text-xs text-white/80">%</span>
-            <span className="text-white/30 mx-1">·</span>
-            <span className="text-[10px] text-white/60">1년차 70% · 2년차 85% · 과시즌 100% 고정</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="text-[10px] text-white/90">27F</span>
+              <span className="text-[10px] tabular-nums text-white/50">0% 고정</span>
+            </span>
+            <span className="text-white/40">|</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="text-[10px] text-white/90">기타시즌</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={sellThroughRates.currentDefault}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (isNaN(v) || !onSellThroughRatesChange) return;
+                  onSellThroughRatesChange({
+                    ...sellThroughRates,
+                    currentDefault: Math.min(100, Math.max(0, v)),
+                  });
+                }}
+                className="h-6 w-11 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+              />
+              <span className="text-[10px] text-white/70">%</span>
+            </span>
+            <span className="text-white/40">|</span>
+            {(["1년차", "2년차"] as const).map((yg) => (
+              <span key={yg} className="inline-flex items-center gap-1">
+                <span className="text-[10px] text-white/90">{yg}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={sellThroughRates.yearGroup[yg] ?? ""}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (isNaN(v) || !onSellThroughRatesChange) return;
+                    onSellThroughRatesChange({
+                      ...sellThroughRates,
+                      yearGroup: { ...sellThroughRates.yearGroup, [yg]: Math.min(100, Math.max(0, v)) },
+                    });
+                  }}
+                  className="h-6 w-11 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+                />
+                <span className="text-[10px] text-white/70">%</span>
+              </span>
+            ))}
+            <span className="text-white/40">|</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="text-[10px] text-white/90">과시즌</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={sellThroughRates.oldSeason}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (isNaN(v) || !onSellThroughRatesChange) return;
+                  onSellThroughRatesChange({ ...sellThroughRates, oldSeason: Math.min(100, Math.max(0, v)) });
+                }}
+                className="h-6 w-11 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
+              />
+              <span className="text-[10px] text-white/70">%</span>
+            </span>
+            </div>
           </div>
           <div className="border-b border-slate-200 bg-blue-50 px-4 py-2 text-[11px] text-blue-700">
             <span className="font-semibold bg-blue-100 rounded px-1.5 py-0.5 mr-1">의류 계산 로직</span>
             <span className="mx-1.5 text-blue-300">·</span>
             매입 = OTB − 25년 누적입고
             <span className="mx-1.5 text-blue-300">·</span>
-            판매 = (기초+매입) × Sell through%
+            판매 = (기초+매입) × Sell through% (상단 패널 시즌·연차·과시즌별)
             <span className="mx-1.5 text-blue-300">·</span>
             기말재고 = 기초+매입−판매
             <span className="mx-3 text-blue-200">|</span>
@@ -708,7 +793,7 @@ export default function DealerDetailTable({
           className="overflow-hidden sticky z-20 bg-white rounded-t-xl"
           style={{ top: year === "2026" ? "200px" : "120px" }}
         >
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: year === "2026" ? 1310 : 1186 }}>
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
           {colgroup}
         <thead>
           <tr>
@@ -729,18 +814,13 @@ export default function DealerDetailTable({
               {year === "2025" ? "매입" : "매입(OTB-25년누적)"}
             </th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
-            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>판매(역산)</th>
-            <th
-              className={
-                year === "2026"
-                  ? `${thNoRight} bg-sky-100 text-slate-700`
-                  : `${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`
-              }
-            >
-              {year === "2026" ? "YOY(25년역산)" : "YOY"}
+            <th className={`${thNoRight} bg-sky-100 text-slate-700`}>
+              {year === "2025" ? (retailDw2025 ? "판매(POS)" : "판매(역산)") : "판매(역산)"}
             </th>
-            {year === "2026" && (
+            {year === "2026" ? (
               <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY(25년POS)</th>
+            ) : (
+              <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             )}
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
@@ -751,19 +831,12 @@ export default function DealerDetailTable({
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>매입</th>
             <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>
-              {year === "2025" ? "판매(역산)" : "판매(실적+예상)"}
+              {year === "2025" ? (retailDw2025 ? "판매(POS)" : "판매(역산)") : "판매(실적+예상)"}
             </th>
-            <th
-              className={
-                year === "2026"
-                  ? `${thNoRight} bg-sky-100 text-slate-700`
-                  : `${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`
-              }
-            >
-              {year === "2026" ? "YOY(25년역산)" : "YOY"}
-            </th>
-            {year === "2026" && (
+            {year === "2026" ? (
               <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY(25년POS)</th>
+            ) : (
+              <th className={`${th} bg-sky-100 text-slate-700 border-r border-slate-200 [border-right-style:dashed]`}>YOY</th>
             )}
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>기말재고</th>
             <th className={`${thNoRight} bg-sky-100 text-slate-700`}>YOY</th>
@@ -791,7 +864,9 @@ export default function DealerDetailTable({
               <td className={tdAppNoRight}><Num v={totalRow.apparel.purchase} /></td>
               <td className={tdAppPurchaseYoy}><Yoy v={totalRow.apparel.purchaseYoy ?? null} /></td>
               <td className={tdAppNoRight}><Num v={totalRow.apparel.sales} /></td>
-              <td className={tdAppSalesYoy}><Yoy v={totalRow.apparel.salesYoy ?? null} /></td>
+              {year !== "2026" && (
+                <td className={tdAppSalesYoy}><Yoy v={totalRow.apparel.salesYoy ?? null} /></td>
+              )}
               {year === "2026" && (
                 <td className={tdAppSalesYoyPos}><Yoy v={totalRow.apparel.salesYoyPos ?? null} /></td>
               )}
@@ -803,7 +878,9 @@ export default function DealerDetailTable({
               <td className={tdAccNoRight}><Num v={totalRow.acc.purchase} /></td>
               <td className={tdAccPurchaseYoy}><Yoy v={totalRow.acc.purchaseYoy ?? null} /></td>
               <td className={tdAccNoRight}><Num v={totalRow.acc.sales} /></td>
-              <td className={tdAccSalesYoy}><Yoy v={totalRow.acc.salesYoy ?? null} /></td>
+              {year !== "2026" && (
+                <td className={tdAccSalesYoy}><Yoy v={totalRow.acc.salesYoy ?? null} /></td>
+              )}
               {year === "2026" && (
                 <td className={tdAccSalesYoyPos}><Yoy v={totalRow.acc.salesYoyPos ?? null} /></td>
               )}
@@ -822,7 +899,7 @@ export default function DealerDetailTable({
         onScroll={onBodyTableScroll}
         className="overflow-x-auto"
       >
-      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: year === "2026" ? 1310 : 1186 }}>
+      <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
         {colgroup}
         <thead style={{ height: 0, visibility: "hidden" }} aria-hidden="true">
           <tr>
@@ -1018,7 +1095,9 @@ function SlotsDetailRows({
               <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.purchase} /></td>
               <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.purchaseYoy ?? null} /> : ""}</td>
               <td className={`${tdSubApp} ${cellBorder}`}><Num v={grp.data.sales} /></td>
-              <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.salesYoy ?? null} /> : ""}</td>
+              {year !== "2026" && (
+                <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={grp.data.salesYoy ?? null} /> : ""}</td>
+              )}
               {showPosYoyCol && (
                 <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`}>
                   <Yoy v={grp.data.salesYoyPos ?? null} />
@@ -1034,7 +1113,9 @@ function SlotsDetailRows({
                   <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.purchase} /></td>
                   <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : ""}</td>
                   <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
-                  <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                  {year !== "2026" && (
+                    <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                  )}
                   {showPosYoyCol && (
                     <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`}>
                       <Yoy v={ac.salesYoyPos ?? null} />
@@ -1052,7 +1133,7 @@ function SlotsDetailRows({
                   <td className={`${tdSubAcc} ${cellBorder}`} />
                   <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
                   <td className={`${tdSubAcc} ${cellBorder}`} />
-                  <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                  {year !== "2026" && <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />}
                   {showPosYoyCol && <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`} />}
                   <td className={`${tdSubAcc} ${cellBorder}`} />
                   <td className={`${tdSubAcc} ${cellBorder}`} />
@@ -1072,7 +1153,9 @@ function SlotsDetailRows({
                 <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.purchase} /></td>
                 <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.purchaseYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubApp} ${cellBorder}`}><Num v={ap.data.sales} /></td>
-                <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.salesYoy ?? null} /> : ""}</td>
+                {year !== "2026" && (
+                  <td className={`${tdSubAppSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ap.data.salesYoy ?? null} /> : ""}</td>
+                )}
                 {showPosYoyCol && (
                   <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`}>
                     <Yoy v={ap.data.salesYoyPos ?? null} />
@@ -1088,7 +1171,7 @@ function SlotsDetailRows({
                 <td className={`${tdSubApp} ${cellBorder}`} />
                 <td className={`${tdSubAppPurchaseYoy} ${cellBorder}`} />
                 <td className={`${tdSubApp} ${cellBorder}`} />
-                <td className={`${tdSubAppSalesYoy} ${cellBorder}`} />
+                {year !== "2026" && <td className={`${tdSubAppSalesYoy} ${cellBorder}`} />}
                 {showPosYoyCol && <td className={`${tdSubAppSalesYoyPos} ${cellBorder}`} />}
                 <td className={`${tdSubApp} ${cellBorder}`} />
                 <td className={`${tdSubApp} ${cellBorder}`} />
@@ -1102,7 +1185,9 @@ function SlotsDetailRows({
                 <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.purchase} /></td>
                 <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.purchaseYoy ?? null} /> : ""}</td>
                 <td className={`${tdSubAcc} ${cellBorder}`}><Num v={ac.sales} /></td>
-                <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                {year !== "2026" && (
+                  <td className={`${tdSubAccSalesYoy} ${cellBorder}`}>{showYoy ? <Yoy v={ac.salesYoy ?? null} /> : ""}</td>
+                )}
                 {showPosYoyCol && (
                   <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`}>
                     <Yoy v={ac.salesYoyPos ?? null} />
@@ -1120,7 +1205,7 @@ function SlotsDetailRows({
                 <td className={`${tdSubAcc} ${cellBorder}`} />
                 <td className={`${tdSubAccPurchaseYoy} ${cellBorder}`} />
                 <td className={`${tdSubAcc} ${cellBorder}`} />
-                <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />
+                {year !== "2026" && <td className={`${tdSubAccSalesYoy} ${cellBorder}`} />}
                 {showPosYoyCol && <td className={`${tdSubAccSalesYoyPos} ${cellBorder}`} />}
                 <td className={`${tdSubAcc} ${cellBorder}`} />
                 <td className={`${tdSubAcc} ${cellBorder}`} />
@@ -1246,7 +1331,9 @@ function DealerRow({
         <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.purchase} /></td>
         <td className={`${tdAppPurchaseYoy} ${borderB}`}><Yoy v={m.apparel.purchaseYoy} /></td>
         <td className={`${tdAppNoRight} ${borderB}`}><Num v={m.apparel.sales} /></td>
-        <td className={`${tdAppSalesYoy} ${borderB}`}><Yoy v={m.apparel.salesYoy} /></td>
+        {year !== "2026" && (
+          <td className={`${tdAppSalesYoy} ${borderB}`}><Yoy v={m.apparel.salesYoy} /></td>
+        )}
         {year === "2026" && (
           <td className={`${tdAppSalesYoyPos} ${borderB}`}><Yoy v={m.apparel.salesYoyPos ?? null} /></td>
         )}
@@ -1260,7 +1347,9 @@ function DealerRow({
         <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.purchase} /></td>
         <td className={`${tdAccPurchaseYoy} ${borderB}`}><Yoy v={m.acc.purchaseYoy} /></td>
         <td className={`${tdAccNoRight} ${borderB}`}><Num v={m.acc.sales} /></td>
-        <td className={`${tdAccSalesYoy} ${borderB}`}><Yoy v={m.acc.salesYoy} /></td>
+        {year !== "2026" && (
+          <td className={`${tdAccSalesYoy} ${borderB}`}><Yoy v={m.acc.salesYoy} /></td>
+        )}
         {year === "2026" && (
           <td className={`${tdAccSalesYoyPos} ${borderB}`}><Yoy v={m.acc.salesYoyPos ?? null} /></td>
         )}

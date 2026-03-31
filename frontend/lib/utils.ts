@@ -10,3 +10,10 @@ export function fmtAmt(value: number | undefined | null): string {
 export function calcTotal(months: Record<number, number>): number {
   return Object.values(months).reduce((s, v) => s + (v || 0), 0);
 }
+
+/** 대리상 표시명: 한글 있으면 한글, 없으면 영문 */
+export function dealerDisplayName(accountNameKr: string, accountNameEn: string): string {
+  const k = accountNameKr.trim();
+  if (k) return k;
+  return accountNameEn.trim();
+}

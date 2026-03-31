@@ -16,7 +16,6 @@ export type PlanAccountNameMap = Record<string, { account_nm_en: string; account
 
 interface Props {
   plan: RetailData | null;
-  retail2025: RetailData | null;
   retailPos2025: RetailData | null;
   brand: BrandKey;
   accountNameMap?: PlanAccountNameMap;
@@ -41,7 +40,6 @@ function saleToTag(sale: number, tag25: number, sale25: number): number {
 
 export default function RetailPlan2026Table({
   plan,
-  retail2025,
   retailPos2025,
   brand,
   accountNameMap = {},
@@ -49,13 +47,6 @@ export default function RetailPlan2026Table({
   const [open, setOpen] = useState(false);
 
   const accounts = plan?.brands[brand] ?? [];
-
-  const retail25ById = useMemo(() => {
-    const rows = retail2025?.brands[brand] ?? [];
-    const m: Record<string, RetailRow> = {};
-    for (const r of rows) m[r.account_id] = r;
-    return m;
-  }, [retail2025, brand]);
 
   type PosRow = RetailRow & { months_sale?: Record<number, number> };
   const retailPos25ById = useMemo(() => {
@@ -80,12 +71,9 @@ export default function RetailPlan2026Table({
   });
   const sum26Brand = calcTotal(brandTotals26);
 
-  let sum25Brand = 0;
   let sumPos25TagBrand = 0;
   let sumPos25SaleBrand = 0;
   for (const a of accounts) {
-    const r25 = retail25ById[a.account_id];
-    if (r25) sum25Brand += calcTotal(r25.months);
     const pos25 = retailPos25ById[a.account_id];
     if (pos25) {
       sumPos25TagBrand += calcTotal(pos25.months);
@@ -129,16 +117,6 @@ export default function RetailPlan2026Table({
                 26년합계
               </th>
               <th
-                className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[100px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
-              >
-                25년역산
-              </th>
-              <th
-                className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[110px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
-              >
-                25년POS(Tag)
-              </th>
-              <th
                 className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[110px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
               >
                 25년POS(Sale)
@@ -147,11 +125,6 @@ export default function RetailPlan2026Table({
                 className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[88px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
               >
                 할인율
-              </th>
-              <th
-                className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[100px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
-              >
-                역산기준YOY
               </th>
               <th
                 className={`${INVENTORY_HEADER_ROW_COLOR} min-w-[100px] whitespace-nowrap border-b border-l border-white/40 px-3 py-4 text-center text-sm font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]`}
@@ -197,16 +170,6 @@ export default function RetailPlan2026Table({
               <td
                 className={`${colorClass} whitespace-nowrap border-b border-white/40 px-3 py-4 text-right text-sm font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] text-slate-800`}
               >
-                {fmtAmt(sum25Brand)}
-              </td>
-              <td
-                className={`${colorClass} whitespace-nowrap border-b border-white/40 px-3 py-4 text-right text-sm font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] text-slate-800`}
-              >
-                {fmtAmt(sumPos25TagBrand)}
-              </td>
-              <td
-                className={`${colorClass} whitespace-nowrap border-b border-white/40 px-3 py-4 text-right text-sm font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] text-slate-800`}
-              >
                 {fmtAmt(sumPos25SaleBrand)}
               </td>
               <td
@@ -217,18 +180,12 @@ export default function RetailPlan2026Table({
               <td
                 className={`${colorClass} whitespace-nowrap border-b border-white/40 px-3 py-4 text-right text-sm font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] text-slate-800`}
               >
-                {fmtPct(sum26Brand, sum25Brand)}
-              </td>
-              <td
-                className={`${colorClass} whitespace-nowrap border-b border-white/40 px-3 py-4 text-right text-sm font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] text-slate-800`}
-              >
                 {fmtPct(sum26Brand, sumPos25TagBrand)}
               </td>
             </tr>
 
             {open &&
               accounts.map((acc, idx) => {
-                const r25 = retail25ById[acc.account_id];
                 const pos25 = retailPos25ById[acc.account_id];
                 const tPos25Tag = pos25 ? calcTotal(pos25.months) : 0;
                 const tPos25Sale = pos25 ? calcTotal(pos25.months_sale ?? {}) : 0;
@@ -237,7 +194,6 @@ export default function RetailPlan2026Table({
                   tPos25Tag > 0 && tPos25Sale > 0
                     ? MONTHS.reduce((s, m) => s + saleToTag(acc.months[m] ?? 0, tPos25Tag, tPos25Sale), 0)
                     : t26Raw;
-                const t25 = r25 ? calcTotal(r25.months) : 0;
                 const rowBg = idx % 2 === 1 ? "bg-slate-50/40" : "";
                 return (
                   <tr key={acc.account_id} className={rowBg}>
@@ -266,27 +222,12 @@ export default function RetailPlan2026Table({
                     <td
                       className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}
                     >
-                      {r25 ? fmtAmt(t25) : ""}
-                    </td>
-                    <td
-                      className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}
-                    >
-                      {pos25 ? fmtAmt(tPos25Tag) : ""}
-                    </td>
-                    <td
-                      className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}
-                    >
                       {pos25 ? fmtAmt(tPos25Sale) : ""}
                     </td>
                     <td
                       className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}
                     >
                       {fmtDiscount(tPos25Tag, tPos25Sale)}
-                    </td>
-                    <td
-                      className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}
-                    >
-                      {fmtPct(t26, t25)}
                     </td>
                     <td
                       className={`whitespace-nowrap border-b border-stone-100 bg-slate-100/40 px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-800 ${rowBg}`}

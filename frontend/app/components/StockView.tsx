@@ -21,7 +21,7 @@ import DealerDetailTable from "./DealerDetailTable";
 import AppOtbTable from "./AppOtbTable";
 import RetailPlan2026Table from "./RetailPlan2026Table";
 import { fmtAmt } from "../../lib/utils";
-import { DEFAULT_TARGET_WEEKS } from "../../lib/dealerMetrics";
+import { DEFAULT_TARGET_WEEKS, DEFAULT_SELL_THROUGH_RATES, type SellThroughRates } from "../../lib/dealerMetrics";
 
 export type AccountNameMap = Record<string, { account_nm_en: string; account_nm_kr: string }>;
 
@@ -42,8 +42,8 @@ interface Props {
   onGrowthRatesChange?: (rates: Record<BrandKey, number>) => void;
   targetWeeks?: Record<string, number>;
   onTargetWeeksChange?: (weeks: Record<string, number>) => void;
-  sellThrough?: number;
-  onSellThroughChange?: (v: number) => void;
+  sellThroughRates?: SellThroughRates;
+  onSellThroughRatesChange?: (next: SellThroughRates) => void;
 }
 
 type RetailSectionHeaderMode = "inverse" | "source2026" | "source2025Dw";
@@ -155,11 +155,51 @@ export function calcRetail(stock: StockData, inbound: InboundData): RetailData {
   return { year: stock.year, brands };
 }
 
+/** 예상 월용 전년 m월: POS(2025 탭과 동일) 우선, 없으면 역산 fallback */
+function priorYearSubMonthForEstimate(
+  retail2025Pos: RetailData | null,
+  brand: BrandKey,
+  accountId: string,
+  대분류: string,
+  중분류: string,
+  m: number,
+  calcFallback: number
+): number {
+  if (!retail2025Pos) return calcFallback;
+  const accPos = (retail2025Pos.brands[brand] ?? []).find((a) => a.account_id === accountId);
+  if (!accPos?.categories?.length) return calcFallback;
+  const cat = accPos.categories.find((c) => c.대분류 === 대분류);
+  const sub = cat?.subcategories.find((s) => s.중분류 === 중분류);
+  if (!sub) return calcFallback;
+  return sub.months[m] ?? 0;
+}
+
+function priorYearAccMonthForEstimate(
+  retail2025Pos: RetailData | null,
+  brand: BrandKey,
+  accountId: string,
+  m: number,
+  calcFallback: number
+): number {
+  if (!retail2025Pos) return calcFallback;
+  const accPos = (retail2025Pos.brands[brand] ?? []).find((a) => a.account_id === accountId);
+  if (!accPos) return calcFallback;
+  const top = accPos.months[m];
+  if (top !== undefined && top !== null) return top;
+  const cats = accPos.categories ?? [];
+  if (cats.length > 0) {
+    return cats.reduce((s, cat) => s + (cat.months[m] ?? 0), 0);
+  }
+  return calcFallback;
+}
+
 // ─── 2026 예상매출 혼합 ───────────────────────
+/** `retail2025Pos`: 2025 리테일매출(POS). 있으면 미완료 월만 POS×성장률, 없으면 역산×성장률(기존). */
 export function blendRetail(
   actual2026: RetailData,
   retail2025calc: RetailData,
-  growthRates: Record<BrandKey, number>
+  growthRates: Record<BrandKey, number>,
+  retail2025Pos: RetailData | null = null
 ): { data: RetailData; estimatedMonths: number[] } {
   // 완료된 월 파악
   const completedMonths = new Set<number>();
@@ -206,7 +246,16 @@ export function blendRetail(
               if (completedMonths.has(m)) {
                 months[m] = cats26ByKey[대분류]?.[중분류_26]?.[m] ?? 0;
               } else {
-                months[m] = Math.round((sub25.months[m] ?? 0) * rate);
+                const base = priorYearSubMonthForEstimate(
+                  retail2025Pos,
+                  brand,
+                  acc25.account_id,
+                  대분류,
+                  sub25.중분류,
+                  m,
+                  sub25.months[m] ?? 0
+                );
+                months[m] = Math.round(base * rate);
               }
             }
             subs.push({ 중분류: 중분류_26, months });
@@ -241,7 +290,14 @@ export function blendRetail(
         } else if (newCats) {
           accMonths[m] = newCats.reduce((s, cat) => s + (cat.months[m] ?? 0), 0);
         } else {
-          accMonths[m] = Math.round((acc25.months[m] ?? 0) * rate);
+          const base = priorYearAccMonthForEstimate(
+            retail2025Pos,
+            brand,
+            acc25.account_id,
+            m,
+            acc25.months[m] ?? 0
+          );
+          accMonths[m] = Math.round(base * rate);
         }
       }
 
@@ -431,18 +487,22 @@ export default function StockView({
   onGrowthRatesChange,
   targetWeeks: targetWeeksProp,
   onTargetWeeksChange,
-  sellThrough: sellThroughProp,
-  onSellThroughChange,
+  sellThroughRates: sellThroughRatesProp,
+  onSellThroughRatesChange,
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
   const [internalGrowthRates, setInternalGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
   const [internalTargetWeeks, setInternalTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
-  const [internalSellThrough, setInternalSellThrough] = useState(70);
+  const [internalSellThroughRates, setInternalSellThroughRates] = useState<SellThroughRates>(() => ({
+    ...DEFAULT_SELL_THROUGH_RATES,
+    bySeason: { ...DEFAULT_SELL_THROUGH_RATES.bySeason },
+    yearGroup: { ...DEFAULT_SELL_THROUGH_RATES.yearGroup },
+  }));
 
   const growthRates = growthRatesProp ?? internalGrowthRates;
   const targetWeeks = targetWeeksProp ?? internalTargetWeeks;
-  const sellThrough = sellThroughProp ?? internalSellThrough;
+  const sellThroughRates = sellThroughRatesProp ?? internalSellThroughRates;
 
   useEffect(() => {
     if (growthRatesProp !== undefined) return;
@@ -467,15 +527,21 @@ export default function StockView({
   const blended = useMemo(
     () =>
       activeYear === "2026" && retail2026 && retail2025calc
-        ? blendRetail(retail2026, retail2025calc, growthRates)
+        ? blendRetail(retail2026, retail2025calc, growthRates, retailDw2025)
         : null,
-    [activeYear, retail2026, retail2025calc, growthRates]
+    [activeYear, retail2026, retail2025calc, growthRates, retailDw2025]
   );
 
   const currentRetail: RetailData | null =
     activeYear === "2025"
       ? retail2025calc
       : blended?.data ?? retail2026;
+
+  /** 2025 탭: 대리상 표 판매 = retail_dw_2025(POS), 없으면 역산(calcRetail) 폴백 */
+  const retailForDealerTable = useMemo(() => {
+    if (activeYear === "2025" && retailDw2025) return retailDw2025;
+    return currentRetail;
+  }, [activeYear, retailDw2025, currentRetail]);
 
   const estimatedMonths = blended?.estimatedMonths ?? [];
 
@@ -527,7 +593,7 @@ export default function StockView({
           brand={selectedBrand}
           stock={currentStock}
           stockPrev={data2025}
-          retail={currentRetail}
+          retail={retailForDealerTable}
           retailPrev={retail2025calc}
           inbound={currentInbound}
           inboundPrev={inbound2025}
@@ -552,10 +618,10 @@ export default function StockView({
             if (onTargetWeeksChange) onTargetWeeksChange(next);
             else setInternalTargetWeeks(next);
           }}
-          sellThrough={sellThrough}
-          onSellThroughChange={(v) => {
-            if (onSellThroughChange) onSellThroughChange(v);
-            else setInternalSellThrough(v);
+          sellThroughRates={sellThroughRates}
+          onSellThroughRatesChange={(next) => {
+            if (onSellThroughRatesChange) onSellThroughRatesChange(next);
+            else setInternalSellThroughRates(next);
           }}
           accountNameMap={accountNameMap}
         />
@@ -684,7 +750,6 @@ export default function StockView({
           {retailPlan2026 ? (
             <RetailPlan2026Table
               plan={retailPlan2026}
-              retail2025={retail2025calc}
               retailPos2025={retailPos2025}
               brand={selectedBrand}
               accountNameMap={accountNameMap}

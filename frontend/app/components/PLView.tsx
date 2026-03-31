@@ -11,6 +11,7 @@ import {
   type RetailStoreData,
   type RetailStoreRow,
 } from "../../lib/types";
+import { dealerDisplayName } from "../../lib/utils";
 import type { AccountNameMap } from "./StockView";
 
 interface Props {
@@ -123,8 +124,133 @@ function actualTagSale(
 const PL_LEGEND_DIRECT_COST_FORMULA =
   "급여 + 성과급 + 보험/공적금 + 임차(max(미니멈,변동)) + 감가상각비 + 기타(마케팅·포장·지급수수료·others)";
 
-/** 데이터 열 개수 (첫 열 제외): store — 인건비 접어도 인원·평균인건비 2열 유지 */
-const DATA_COLS_STORE = 27;
+/** 직접비 블록 열 수 — 본문 DirectCostCells·thead directSpan·TotalRow 동기화 */
+function countDirectCostColumns(variant: PLTableVariant, openGroups: OpenGroups): number {
+  let n = 2 + 1; // 직접비합계, 비용률, 인건비(합계)
+  if (openGroups.labor) n += 2;
+  if (variant === "store" || (variant === "dealer" && openGroups.labor)) n += 1; // 인원수
+  if (variant === "dealer") n += 1; // 매장당 인원수
+  n += 1; // 평균인건비
+  n += 1; // 보험
+  n += 1; // 임차
+  if (variant === "store" && openGroups.rent) n += 2;
+  n += 1; // 감가
+  n += 1; // 기타 합계
+  if (openGroups.other) n += 4;
+  return n;
+}
+
+/** 매장 모달: 매장명 열을 제외한 데이터 열 수(빈 행 colSpan용) */
+function countStoreModalBodyCols(
+  isActualMode: boolean,
+  tagDetailOpen: boolean,
+  cogsRateOpen: boolean,
+  openGroups: OpenGroups,
+): number {
+  const rev = isActualMode ? (tagDetailOpen ? 5 : 2) + 1 : 2;
+  const rateCol = isActualMode ? (cogsRateOpen ? 1 : 0) : 1;
+  return (
+    2 +
+    rev +
+    rateCol +
+    1 +
+    2 +
+    2 +
+    countDirectCostColumns("store", openGroups)
+  );
+}
+
+/** 인건비·임차·기타 하위 열이 모두 접힌 상태 — 직접비 상세 열 폭 균등화에 사용 */
+function plDirectSubgroupsAllCollapsed(openGroups: OpenGroups): boolean {
+  return !openGroups.labor && !openGroups.rent && !openGroups.other;
+}
+
+/** 대리상 PL: `DirectCostCells` 직전까지 열 개수(첫 열 포함), 본문·헤더와 동기화 */
+function countDealerPlLeftColumns(isActualMode: boolean, dealerCogsRateOpen: boolean): number {
+  return (
+    1 + // 대리상명
+    1 + // Tag
+    1 + // 리테일
+    (isActualMode ? 1 : 0) + // 할인율
+    (dealerCogsRateOpen ? 1 : 0) + // 출고율
+    1 + // 매출원가
+    1 + // 매출이익
+    1 + // 매출이익률
+    2 // 영업이익 · 영업이익률
+  );
+}
+
+/** 매장 모달 PL: `DirectCostCells` 직전까지 열 개수(첫 열 포함) */
+function countStorePlLeftColumns(
+  isActualMode: boolean,
+  storeTagDetailOpen: boolean,
+  storeCogsRateOpen: boolean,
+): number {
+  const tagCols = isActualMode ? 1 + (storeTagDetailOpen ? 3 : 0) : 1;
+  return (
+    1 + // 매장명
+    2 + // Store Type, Trade Zone
+    tagCols +
+    1 + // 리테일
+    (isActualMode ? 1 : 0) + // 할인율
+    (!isActualMode || storeCogsRateOpen ? 1 : 0) + // 출고율
+    1 + // 매출원가
+    1 + // 매출이익
+    1 + // 매출이익률
+    2
+  );
+}
+
+/** PL 메인(대리상) 명칭 열 최소 폭 — 매장 모달 대비 1.4배 */
+const PL_NAME_COL_MIN_DEALER_REM = 17 * 1.4; // 23.8
+/** PL 실적월 매장 모달 명칭 열 — 목표 모달(17rem) 대비 1.5배 */
+const PL_NAME_COL_MIN_STORE_ACTUAL_REM = 17 * 1.5; // 25.5
+
+function PlTableColGroup({
+  variant,
+  openGroups,
+  isActualMode,
+  dealerCogsRateOpen = false,
+  storeTagDetailOpen = false,
+  storeCogsRateOpen = false,
+}: {
+  variant: PLTableVariant;
+  openGroups: OpenGroups;
+  isActualMode: boolean;
+  dealerCogsRateOpen?: boolean;
+  storeTagDetailOpen?: boolean;
+  storeCogsRateOpen?: boolean;
+}) {
+  const leftCols =
+    variant === "dealer"
+      ? countDealerPlLeftColumns(isActualMode, dealerCogsRateOpen)
+      : countStorePlLeftColumns(isActualMode, storeTagDetailOpen, storeCogsRateOpen);
+  const directSpan = countDirectCostColumns(variant, openGroups);
+  const equalDetail = plDirectSubgroupsAllCollapsed(openGroups);
+  const detailWidth = "6.25rem";
+  const nameColMin =
+    variant === "dealer"
+      ? `${PL_NAME_COL_MIN_DEALER_REM}rem`
+      : variant === "store" && isActualMode
+        ? `${PL_NAME_COL_MIN_STORE_ACTUAL_REM}rem`
+        : "17rem";
+
+  return (
+    <colgroup>
+      {/* table-fixed에서 1%만 주면 다른 고정폭 열에 밀려 잘림 → minWidth로 하한 */}
+      <col style={{ width: "1%", minWidth: nameColMin }} />
+      {Array.from({ length: leftCols - 1 }, (_, i) => (
+        <col key={`lc-${i}`} />
+      ))}
+      {Array.from({ length: directSpan }, (_, i) => (
+        <col
+          key={`dc-${i}`}
+          style={equalDetail ? { width: detailWidth, minWidth: detailWidth } : undefined}
+        />
+      ))}
+    </colgroup>
+  );
+}
 
 /** PL 월 표기 — 목표 */
 function plMonthTargetLabel(month: number): string {
@@ -189,6 +315,12 @@ function fmtRate(n: number): string {
   return (n * 100).toFixed(1) + "%";
 }
 
+/** 실적 모드: 할인율 = 1 − 리테일(V+)/Tag (표시 0.0% 형식, Tag≤0이면 —) */
+function plActualDiscountRateDisplay(tag: number, retail: number): string {
+  if (!(tag > 0)) return "—";
+  return fmtRate(1 - retail / tag);
+}
+
 /** 점당 금액(위안) 기준 리테일(V+) 대비 비율 — 그룹 KPI 표 %열 */
 function fmtPerPointVatRate(perNumerator: number, perRetail: number): string {
   if (!(perRetail > 0)) return "—";
@@ -243,9 +375,46 @@ function buildPlKpiLegendItems(ctx: PlKpiLegendCtx): ReactNode[] {
         ? "= Snowflake dw_sale sale_amt 월별 집계."
         : "= 2026_monthlyretail.csv 매장별 월 합산."}
     </li>,
+    <li key="cogsRateBasis">
+      <span className="font-semibold text-slate-700">출고율 적용 규칙</span> (대시보드 PL 메인·모달 본문과 동일)
+      {isActual ? (
+        <>
+          {" "}
+          — <span className="font-semibold text-slate-700">실적</span>: 매출원가 산출에 CSV 출고율 맵을 쓰지 않고, Snowflake에서 온
+          월별 <span className="font-semibold text-slate-700">의류 Tag</span>·<span className="font-semibold text-slate-700">ACC Tag</span>·
+          <span className="font-semibold text-slate-700">미정</span>(기타) 금액에 고정 비율을 곱해 합산합니다. 의류·미정 ={" "}
+          {fmtRate(PL_CALC.apparelCogsRate)}, ACC = {fmtRate(PL_CALC.accCogsRate)} (
+          <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">PL_CALC.apparelCogsRate</code>,{" "}
+          <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">accCogsRate</code>). 표의「가중출고율」열은 합계 Tag가 0이
+          아니면 (의류×비율+ACC×비율+미정×비율) ÷ 합계 Tag 로 표시합니다.
+        </>
+      ) : (
+        <>
+          {" "}
+          — <span className="font-semibold text-slate-700">목표·연간목표</span>: 브랜드·대리상(account)당 하나의 출고율을{" "}
+          <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">2025_FR_출고율.csv</code>에서 읽고, 없으면 같은 파일의
+          「평균」값을 씁니다.
+        </>
+      )}
+    </li>,
     <li key="cogs">
-      <span className="font-semibold text-slate-700">매출원가</span> = Tag × 출고율 ÷ {v}
-      {ctx.hasDc ? ` (출고율 ${fmtRate(ctx.cogsRate)})` : ""}.
+      <span className="font-semibold text-slate-700">매출원가</span>{" "}
+      {isActual ? (
+        <>
+          (실적) ={" "}
+          <span className="whitespace-nowrap">
+            (의류Tag×{fmtRate(PL_CALC.apparelCogsRate)} + ACC Tag×{fmtRate(PL_CALC.accCogsRate)} + 미정×
+            {fmtRate(PL_CALC.apparelCogsRate)})
+          </span>
+          ÷ {v}. (코드: <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">cogsMixed / retailVatFactor</code>,{" "}
+          <code className="text-[9px] bg-slate-200/80 px-0.5 rounded">cogsMixed</code>는 위 가중합.)
+        </>
+      ) : (
+        <>
+          (목표) = 합계 Tag × 출고율 ÷ {v}. 출고율은 대리상별 CSV, 없으면 평균.
+          {ctx.hasDc ? ` 예시 출고율 ${fmtRate(ctx.cogsRate)}` : ""}
+        </>
+      )}
     </li>,
     <li key="gp">
       <span className="font-semibold text-slate-700">매출이익</span> = 리테일(V+) ÷ {v} − 매출원가.
@@ -341,6 +510,30 @@ function PlCalcLogicModal({
   if (!open) return null;
 
   const items = buildPlKpiLegendItems(ctx);
+  const isActual = isActualMonth(ctx.selectedMonth);
+  const sectionCards = [
+    {
+      title: "기본 산식",
+      caption: "매출과 원가의 기준이 되는 핵심 계산",
+      tone: "from-sky-50 via-white to-cyan-50 border-sky-200/80",
+      accent: "bg-sky-500",
+      items: items.slice(0, 7),
+    },
+    {
+      title: "직접비 상세",
+      caption: "인건비, 임차, 감가와 기타 직접비 구성",
+      tone: "from-emerald-50 via-white to-teal-50 border-emerald-200/80",
+      accent: "bg-emerald-500",
+      items: items.slice(7, 14),
+    },
+    {
+      title: "참고 및 데이터",
+      caption: "표시 규칙과 데이터 갱신 참고",
+      tone: "from-amber-50 via-white to-orange-50 border-amber-200/80",
+      accent: "bg-amber-500",
+      items: items.slice(14),
+    },
+  ];
 
   return (
     <div
@@ -349,29 +542,97 @@ function PlCalcLogicModal({
       role="presentation"
     >
       <div
-        className="relative w-full max-w-[min(96rem,98vw)] max-h-[min(90vh,1280px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
+        className="relative flex max-h-[min(90vh,1280px)] w-full max-w-[min(96rem,98vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.24)]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pl-calc-logic-title"
       >
-        <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
-          <h3 id="pl-calc-logic-title" className="text-base font-bold text-slate-800">
-            계산 로직 <span className="text-slate-500 font-normal">({ctx.monthLabel})</span>
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors shrink-0"
-            aria-label="닫기"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="shrink-0 border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.14),_transparent_42%),linear-gradient(135deg,_#f8fafc_0%,_#ffffff_58%,_#eef6ff_100%)] px-5 py-4 sm:px-6 sm:py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold tracking-[0.01em] text-sky-700">
+                  PL 계산 가이드
+                </span>
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                  {ctx.monthLabel}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    isActual
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {isActual ? "실적 기준" : "목표 기준"}
+                </span>
+              </div>
+              <h3 id="pl-calc-logic-title" className="text-lg font-bold tracking-[-0.02em] text-slate-800">
+                계산 로직
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                계산식 자체는 그대로 두고, 주요 기준과 비용 구조를 한눈에 볼 수 있게 정리한 안내 팝업입니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-xl border border-slate-200 bg-white/80 p-2 text-slate-400 shadow-sm transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Retail Factor</div>
+              <div className="mt-1 text-lg font-bold text-slate-800">{PL_CALC.retailVatFactor}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">리테일(V+)를 순매출 기준으로 환산할 때 공통 사용</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Rent Rule</div>
+              <div className="mt-1 text-sm font-bold text-slate-800">미니멈 vs 변동 임차 비교</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">두 값 중 큰 금액을 임차 비용으로 반영</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">View Mode</div>
+              <div className="mt-1 text-sm font-bold text-slate-800">{isActual ? "Snowflake 실적 기반" : "CSV 목표 기반"}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">선택 월 기준 데이터 소스와 원가 계산 기준을 함께 표시</div>
+            </div>
+          </div>
         </div>
-        <div className="overflow-y-auto px-5 py-4 text-left">
-          <ul className="space-y-3 text-sm text-slate-600 leading-relaxed list-none">{items}</ul>
+        <div className="overflow-y-auto bg-slate-50/70 px-5 py-5 text-left sm:px-6 sm:py-6">
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_1.1fr_0.9fr]">
+            {sectionCards.map((section) => (
+              <section
+                key={section.title}
+                className={`overflow-hidden rounded-[24px] border bg-gradient-to-br ${section.tone} shadow-[0_14px_34px_rgba(15,23,42,0.08)]`}
+              >
+                <div className="border-b border-white/70 px-4 py-4 sm:px-5">
+                  <div className="flex items-center gap-3">
+                    <span className={`h-10 w-1.5 rounded-full ${section.accent}`} aria-hidden="true" />
+                    <div>
+                      <h4 className="text-sm font-bold tracking-[-0.01em] text-slate-800">{section.title}</h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{section.caption}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-3 px-4 py-4 sm:px-5 sm:py-5">
+                  {section.items.map((item, index) => (
+                    <ul
+                      key={`${section.title}-${index}`}
+                      className="list-none rounded-2xl border border-white/80 bg-white/92 px-4 py-3 text-sm leading-7 text-slate-600 shadow-sm"
+                    >
+                      {item}
+                    </ul>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -585,6 +846,10 @@ interface DirectCostCellsProps {
   packaging: number;
   payFee: number;
   othersLine: number;
+  /** 대리상 표만: 활성 매장 수 — 있으면 인원수·평균인건비 사이에 매장당 인원수 열 */
+  activeStoreCount?: number;
+  /** 대리상: 인건비 접힘 시 인원수 열 숨김 — store는 항상 true */
+  showHeadcountCol?: boolean;
 }
 
 function DirectCostCells({
@@ -605,6 +870,8 @@ function DirectCostCells({
   packaging,
   payFee,
   othersLine,
+  activeStoreCount,
+  showHeadcountCol = true,
 }: DirectCostCellsProps) {
   const cls = (v: number) => (v === 0 ? "text-slate-300" : "text-slate-700");
   const clsSub = (v: number) => (v === 0 ? "text-slate-300" : "text-slate-600");
@@ -622,27 +889,40 @@ function DirectCostCells({
   return (
     <>
       <td className={`px-3 py-2 border-l border-slate-200 ${cls(directCost)}`}>{f(directCost)}</td>
-      <td className={`px-3 py-2 ${cr === null ? "text-slate-300" : "text-slate-600"}`}>
+      <td className={`px-3 py-2 tabular-nums ${cr === null ? "text-slate-300" : "text-slate-600"}`}>
         {cr === null ? "—" : fmtRate(cr)}
       </td>
-      <td className={`px-3 py-2 font-semibold text-slate-700 ${cls(labor)}`}>{f(labor)}</td>
+      <td className={`px-3 py-2 border-l border-slate-200 font-semibold text-slate-700 ${cls(labor)}`}>{f(labor)}</td>
       {openGroups.labor && (
         <>
           {subTd(salary)}
           {subTd(bonus)}
         </>
       )}
-      <td
-        className={`px-3 py-2 border-l border-slate-300 ${REF_TD} ${
-          headcount === 0 ? "text-slate-400" : "text-slate-600"
-        }`}
-      >
-        {headcount === 0 ? "—" : `${headcount}명`}
-      </td>
+      {showHeadcountCol && (
+        <td
+          className={`px-3 py-2 border-l border-slate-200 ${REF_TD} ${
+            headcount === 0 ? "text-slate-400" : "text-slate-600"
+          }`}
+        >
+          {headcount === 0 ? "—" : `${headcount}명`}
+        </td>
+      )}
+      {activeStoreCount !== undefined && (
+        <td
+          className={`px-3 py-2 ${REF_TD} ${
+            activeStoreCount > 0 && headcount > 0 ? "text-slate-600" : "text-slate-400"
+          }`}
+        >
+          {activeStoreCount > 0 && headcount > 0
+            ? `${Math.ceil(headcount / activeStoreCount)}명`
+            : "—"}
+        </td>
+      )}
       <td className={`px-3 py-2 ${REF_TD} ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
         {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
       </td>
-      <td className={`px-3 py-2 border-l border-slate-300 font-semibold ${cls(insurance)}`}>{f(insurance)}</td>
+      <td className={`px-3 py-2 border-l border-slate-200 font-semibold ${cls(insurance)}`}>{f(insurance)}</td>
       <td className={`px-3 py-2 font-semibold ${cls(rent)}`}>{f(rent)}</td>
       {variant === "store" && openGroups.rent && (
         <>
@@ -672,6 +952,12 @@ function PLTableHead({
   storeColumnSort,
   cogsRateColumnLabel = "25년 출고율",
   isActualMode = false,
+  dealerCogsRateOpen = false,
+  onDealerCogsRateToggle,
+  storeTagDetailOpen = false,
+  onStoreTagDetailToggle,
+  storeCogsRateOpen = false,
+  onStoreCogsRateToggle,
 }: {
   firstColLabel: string;
   variant: PLTableVariant;
@@ -687,14 +973,34 @@ function PLTableHead({
   };
   /** 실적 모드 여부 — 의류/ACC Tag 컬럼 표시 여부 */
   isActualMode?: boolean;
+  /** 대리상 메인: 출고율 열 표시(기본 접힘=false) */
+  dealerCogsRateOpen?: boolean;
+  onDealerCogsRateToggle?: () => void;
+  /** 실적 매장 모달: 의류/ACC/미정 세부 열 표시(접힘=Tag+리테일만) */
+  storeTagDetailOpen?: boolean;
+  onStoreTagDetailToggle?: () => void;
+  /** 실적 매장 모달: 가중출고율 열 표시 */
+  storeCogsRateOpen?: boolean;
+  onStoreCogsRateToggle?: () => void;
 }) {
-  // base=7: 직접비합계+비용률+인건비+보험+임차료+감가+기타
-  const laborExtraCols = 2 + (openGroups.labor ? 2 : 0);
-  const directSpan =
-    7 +
-    laborExtraCols +
-    (variant === "store" && openGroups.rent ? 2 : 0) +
-    (openGroups.other ? 4 : 0);
+  const directSpan = countDirectCostColumns(variant, openGroups);
+  const directSpanDetail = directSpan - 2;
+  const showHeadcountCol = variant === "store" || (variant === "dealer" && openGroups.labor);
+  const showCogsRateCol =
+    variant === "dealer"
+      ? dealerCogsRateOpen
+      : isActualMode
+        ? storeCogsRateOpen
+        : true;
+  const revenueColSpan =
+    variant === "store"
+      ? isActualMode
+        ? (storeTagDetailOpen ? 5 : 2) + 1
+        : 2
+      : isActualMode
+        ? 3
+        : 2;
+  const cogsGroupColSpan = showCogsRateCol ? 2 : 1;
 
   const toggleBtn = (key: keyof OpenGroups, isOpen: boolean) => (
     <button
@@ -706,6 +1012,38 @@ function PLTableHead({
       {isOpen ? "▼" : "▶"}
     </button>
   );
+
+  const tagDetailToggleBtn = onStoreTagDetailToggle ? (
+    <button
+      type="button"
+      onClick={onStoreTagDetailToggle}
+      className="ml-1 opacity-60 hover:opacity-100 transition-opacity text-[9px] leading-none"
+      title={storeTagDetailOpen ? "접기" : "펼치기"}
+    >
+      {storeTagDetailOpen ? "▼" : "▶"}
+    </button>
+  ) : null;
+
+  const cogsRateToggleBtn =
+    variant === "dealer" && onDealerCogsRateToggle ? (
+      <button
+        type="button"
+        onClick={onDealerCogsRateToggle}
+        className="ml-1 opacity-60 hover:opacity-100 transition-opacity text-[9px] leading-none"
+        title={dealerCogsRateOpen ? "접기" : "펼치기"}
+      >
+        {dealerCogsRateOpen ? "▼" : "▶"}
+      </button>
+    ) : variant === "store" && isActualMode && onStoreCogsRateToggle ? (
+      <button
+        type="button"
+        onClick={onStoreCogsRateToggle}
+        className="ml-1 opacity-60 hover:opacity-100 transition-opacity text-[9px] leading-none"
+        title={storeCogsRateOpen ? "접기" : "펼치기"}
+      >
+        {storeCogsRateOpen ? "▼" : "▶"}
+      </button>
+    ) : null;
 
   const sortMark = (key: StoreTableSortKey) => {
     if (!storeColumnSort || storeColumnSort.sortKey !== key) {
@@ -732,13 +1070,13 @@ function PLTableHead({
           </>
         )}
         <th
-          colSpan={isActualMode && variant === "store" ? 5 : 2}
+          colSpan={revenueColSpan}
           className="px-3 py-1.5 text-center text-[10px] font-semibold text-white border-l border-white/20"
         >
           매출
         </th>
         <th
-          colSpan={2}
+          colSpan={cogsGroupColSpan}
           className="px-3 py-1.5 text-center text-[10px] font-semibold text-white border-l border-white/20"
         >
           원가
@@ -750,20 +1088,34 @@ function PLTableHead({
           매출이익
         </th>
         <th
-          colSpan={directSpan}
-          className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
-        >
-          직접비
-        </th>
-        <th
           colSpan={2}
           className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
         >
           영업이익
         </th>
+        <th
+          colSpan={2}
+          className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
+        >
+          직접비
+        </th>
+        <th
+          colSpan={directSpanDetail}
+          className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
+        >
+          직접비 상세
+        </th>
       </tr>
-      <tr className="bg-sky-100 border-b border-sky-200">
-        <th className="sticky left-0 z-10 bg-sky-100 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 min-w-[200px]">
+      <tr className="bg-sky-100 border-b border-slate-200">
+        <th
+          className={`sticky left-0 z-10 bg-sky-100 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 ${
+            variant === "dealer"
+              ? "min-w-[23.8rem]"
+              : variant === "store" && isActualMode
+                ? "min-w-[25.5rem]"
+                : "min-w-[17rem]"
+          }`}
+        >
           {variant === "store" && storeColumnSort ? (
             <button
               type="button"
@@ -783,7 +1135,7 @@ function PLTableHead({
         </th>
         {variant === "store" && (
           <>
-            <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
+            <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
               Store Type
             </th>
             <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
@@ -791,21 +1143,24 @@ function PLTableHead({
             </th>
           </>
         )}
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
-          Tag
-        </th>
-        {isActualMode && variant === "store" && (
+        {variant === "store" && isActualMode ? (
           <>
-            <th className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">
-              의류Tag
+            <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
+              Tag
+              {tagDetailToggleBtn}
             </th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">
-              ACC Tag
-            </th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-slate-400 whitespace-nowrap">
-              미정
-            </th>
+            {storeTagDetailOpen && (
+              <>
+                <th className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">의류Tag</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">ACC Tag</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-slate-400 whitespace-nowrap">미정</th>
+              </>
+            )}
           </>
+        ) : (
+          <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
+            Tag
+          </th>
         )}
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
           {variant === "store" && storeColumnSort ? (
@@ -825,11 +1180,23 @@ function PLTableHead({
             "리테일(V+)"
           )}
         </th>
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
-          {cogsRateColumnLabel}
+        {isActualMode && (
+          <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">할인율</th>
+        )}
+        {showCogsRateCol && (
+          <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
+            {cogsRateColumnLabel}
+            {cogsRateToggleBtn}
+          </th>
+        )}
+        <th
+          className={`px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap ${
+            !showCogsRateCol ? "border-l border-slate-200" : ""
+          }`}
+        >
+          매출원가
         </th>
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">매출원가</th>
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
+        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
           {variant === "store" && storeColumnSort ? (
             <button
               type="button"
@@ -848,11 +1215,17 @@ function PLTableHead({
           )}
         </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">매출이익률</th>
-        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-sky-200">
+        <th className="px-3 py-2.5 text-xs font-bold text-[#1e3a5f] whitespace-nowrap border-l border-slate-200">
+          영업이익
+        </th>
+        <th className="px-3 py-2.5 text-xs font-bold text-[#1e3a5f] whitespace-nowrap">영업이익률</th>
+        <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
           직접비합계
         </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">비용률</th>
-        <th className={`px-3 py-2.5 text-xs whitespace-nowrap cursor-pointer select-none ${L1_HEAD}`}>
+        <th
+          className={`px-3 py-2.5 text-xs whitespace-nowrap cursor-pointer select-none border-l border-slate-200 ${L1_HEAD}`}
+        >
           인건비{toggleBtn("labor", openGroups.labor)}
         </th>
         {openGroups.labor &&
@@ -867,14 +1240,19 @@ function PLTableHead({
               <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${SUB_HEAD}`}>(성과급)</th>
             </>
           ))}
-        <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap border-l border-sky-300 ${REF_COL}`}>
-          인원수
-        </th>
+        {showHeadcountCol && (
+          <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap border-l border-slate-200 ${REF_COL}`}>
+            인원수
+          </th>
+        )}
+        {variant === "dealer" && (
+          <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${REF_COL}`}>매장당 인원수</th>
+        )}
         <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${REF_COL}`}>평균인건비</th>
         {variant === "store" ? (
-          <PlStoreTwoLineTh title="보험/공적금" subLine={PL_STORE_HEAD_SUB.insurance} className="border-l border-sky-300" />
+          <PlStoreTwoLineTh title="보험/공적금" subLine={PL_STORE_HEAD_SUB.insurance} className="border-l border-slate-200" />
         ) : (
-          <th className={`px-3 py-2.5 text-xs whitespace-nowrap border-l border-sky-300 ${L1_HEAD}`}>
+          <th className={`px-3 py-2.5 text-xs whitespace-nowrap border-l border-slate-200 ${L1_HEAD}`}>
             보험/공적금
           </th>
         )}
@@ -887,7 +1265,7 @@ function PLTableHead({
               </>
             }
             subLine={PL_STORE_HEAD_SUB.rent}
-            className="cursor-pointer select-none border-l border-sky-300"
+            className="cursor-pointer select-none"
           />
         ) : (
           <th className={`px-3 py-2.5 text-xs whitespace-nowrap cursor-pointer select-none ${L1_HEAD}`}>
@@ -901,9 +1279,9 @@ function PLTableHead({
           </>
         )}
         {variant === "store" ? (
-          <PlStoreTwoLineTh title="감가상각비" subLine={PL_STORE_HEAD_SUB.depr} className="border-l border-sky-200" />
+          <PlStoreTwoLineTh title="감가상각비" subLine={PL_STORE_HEAD_SUB.depr} className="" />
         ) : (
-          <th className={`px-3 py-2.5 text-xs whitespace-nowrap border-l border-sky-200 ${L1_HEAD}`}>
+          <th className={`px-3 py-2.5 text-xs whitespace-nowrap border-l border-slate-200 ${L1_HEAD}`}>
             감가상각비
           </th>
         )}
@@ -926,10 +1304,6 @@ function PLTableHead({
               <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${SUB_HEAD}`}>(others)</th>
             </>
           ))}
-        <th className="px-3 py-2.5 text-xs font-bold text-[#1e3a5f] whitespace-nowrap border-l border-sky-300">
-          영업이익
-        </th>
-        <th className="px-3 py-2.5 text-xs font-bold text-[#1e3a5f] whitespace-nowrap">영업이익률</th>
       </tr>
     </thead>
   );
@@ -962,12 +1336,21 @@ function TotalRow({
   selectedMonth,
   openGroups,
   isActualMode = false,
+  dealerTotalActiveStores,
+  dealerCogsRateOpen = false,
+  storeTagDetailOpen = false,
+  storeCogsRateOpen = false,
 }: {
   totals: TotalRowTotals;
   variant: PLTableVariant;
   selectedMonth: MonthOption;
   openGroups: OpenGroups;
   isActualMode?: boolean;
+  /** 대리상 합계 행: 표에 포함된 활성 매장 수 합 */
+  dealerTotalActiveStores?: number;
+  dealerCogsRateOpen?: boolean;
+  storeTagDetailOpen?: boolean;
+  storeCogsRateOpen?: boolean;
 }) {
   const f = (v: number) => (v === 0 ? "—" : fmt(v));
   const c = (v: number) => (v === 0 ? "text-slate-300" : "text-slate-800");
@@ -984,13 +1367,20 @@ function TotalRow({
   const cr = plCostRate(totals.retail, totals.directCost);
   const rf = totals.rentFixed ?? 0;
   const rv = totals.rentVariable ?? 0;
+  const showHeadcountCol = variant === "store" || (variant === "dealer" && openGroups.labor);
+  const showCogsRateCol =
+    variant === "dealer"
+      ? dealerCogsRateOpen
+      : isActualMode
+        ? storeCogsRateOpen
+        : true;
 
   const subTd = (v: number) => (
     <td className={`px-3 py-2.5 ${cSub(v)}`}>{f(v)}</td>
   );
 
   return (
-    <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-xs">
+    <tr className="border-t-2 border-slate-200 bg-slate-100 font-semibold text-xs">
       <td className="sticky left-0 z-10 bg-slate-100 px-3 py-2.5 text-left text-slate-800">합 계</td>
       {variant === "store" && (
         <>
@@ -998,41 +1388,88 @@ function TotalRow({
           <td className="px-3 py-2.5" />
         </>
       )}
-      <td className="px-3 py-2.5 text-slate-800 border-l border-slate-200">{fmt(totals.tag)}</td>
-      {isActualMode && variant === "store" && (
+      {variant === "dealer" && (
+        <td className="px-3 py-2.5 text-slate-800 border-l border-slate-200">{fmt(totals.tag)}</td>
+      )}
+      {variant === "store" && (
         <>
-          <td className="px-3 py-2.5" />
-          <td className="px-3 py-2.5" />
-          <td className="px-3 py-2.5" />
+          <td className="px-3 py-2.5 text-slate-800 border-l border-slate-200">{fmt(totals.tag)}</td>
+          {isActualMode && storeTagDetailOpen && (
+            <>
+              <td className="px-3 py-2.5" />
+              <td className="px-3 py-2.5" />
+              <td className="px-3 py-2.5" />
+            </>
+          )}
         </>
       )}
       <td className="px-3 py-2.5 text-slate-800">{fmt(totals.retail)}</td>
-      <td className="px-3 py-2.5 text-slate-400 border-l border-slate-200">—</td>
-      <td className="px-3 py-2.5 text-slate-800">{fmt(totals.cogs)}</td>
+      {isActualMode && (
+        <td className="px-3 py-2.5 text-slate-600">{plActualDiscountRateDisplay(totals.tag, totals.retail)}</td>
+      )}
+      {showCogsRateCol && <td className="px-3 py-2.5 text-slate-400 border-l border-slate-200">—</td>}
+      <td
+        className={`px-3 py-2.5 text-slate-800 ${!showCogsRateCol ? "border-l border-slate-200" : ""}`}
+      >
+        {fmt(totals.cogs)}
+      </td>
       <td className="px-3 py-2.5 text-slate-800 border-l border-slate-200">{fmt(totals.grossProfit)}</td>
       <td className={`px-3 py-2.5 ${gmr === null ? "text-slate-400" : "text-slate-800"}`}>
         {gmr === null ? "—" : fmtRate(gmr)}
       </td>
+      <td
+        className={`px-3 py-2.5 font-bold border-l border-slate-200 ${
+          totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"
+        }`}
+      >
+        {fmt(totals.operatingProfit)}
+      </td>
+      <td
+        className={`px-3 py-2.5 font-bold ${
+          totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"
+        }`}
+      >
+        {totals.retail > 0
+          ? fmtRate((totals.operatingProfit * PL_CALC.retailVatFactor) / totals.retail)
+          : "—"}
+      </td>
       <td className={`px-3 py-2.5 border-l border-slate-200 ${c(totals.directCost)}`}>{f(totals.directCost)}</td>
-      <td className={cr === null ? "text-slate-400" : "text-slate-800"}>{cr === null ? "—" : fmtRate(cr)}</td>
-      <td className={`px-3 py-2.5 text-slate-800 ${c(labor)}`}>{f(labor)}</td>
+      <td
+        className={`px-3 py-2.5 tabular-nums ${cr === null ? "text-slate-400" : "text-slate-800"}`}
+      >
+        {cr === null ? "—" : fmtRate(cr)}
+      </td>
+      <td className={`px-3 py-2.5 border-l border-slate-200 text-slate-800 ${c(labor)}`}>{f(labor)}</td>
       {openGroups.labor && (
         <>
           {subTd(totals.salary)}
           {subTd(totals.bonus)}
         </>
       )}
-      <td
-        className={`px-3 py-2.5 bg-slate-200 border-l border-slate-300 ${
-          totals.headcount === 0 ? "text-slate-400" : "text-slate-700"
-        }`}
-      >
-        {totals.headcount === 0 ? "—" : `${totals.headcount}명`}
-      </td>
+      {showHeadcountCol && (
+        <td
+          className={`px-3 py-2.5 bg-slate-200 border-l border-slate-200 ${
+            totals.headcount === 0 ? "text-slate-400" : "text-slate-700"
+          }`}
+        >
+          {totals.headcount === 0 ? "—" : `${totals.headcount}명`}
+        </td>
+      )}
+      {variant === "dealer" && (
+        <td
+          className={`px-3 py-2.5 bg-slate-200 ${
+            (dealerTotalActiveStores ?? 0) > 0 && totals.headcount > 0 ? "text-slate-700" : "text-slate-400"
+          }`}
+        >
+          {(dealerTotalActiveStores ?? 0) > 0 && totals.headcount > 0
+            ? `${Math.ceil(totals.headcount / (dealerTotalActiveStores ?? 0))}명`
+            : "—"}
+        </td>
+      )}
       <td className={`px-3 py-2.5 bg-slate-200 ${avgLaborCost === 0 ? "text-slate-400" : "text-slate-700"}`}>
         {avgLaborCost === 0 ? "—" : (avgLaborCost / 1000).toFixed(2)}
       </td>
-      <td className={`px-3 py-2.5 border-l border-slate-300 text-slate-800 ${c(totals.insurance)}`}>
+      <td className={`px-3 py-2.5 border-l border-slate-200 text-slate-800 ${c(totals.insurance)}`}>
         {f(totals.insurance)}
       </td>
       <td className={`px-3 py-2.5 text-slate-800 ${c(totals.rent)}`}>{f(totals.rent)}</td>
@@ -1052,22 +1489,6 @@ function TotalRow({
           <td className={`px-3 py-2.5 ${cSub(totals.othersLine)}`}>{f(totals.othersLine)}</td>
         </>
       )}
-      <td
-        className={`px-3 py-2.5 font-bold border-l border-slate-300 ${
-          totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"
-        }`}
-      >
-        {fmt(totals.operatingProfit)}
-      </td>
-      <td
-        className={`px-3 py-2.5 font-bold ${
-          totals.operatingProfit >= 0 ? "text-blue-800" : "text-red-700"
-        }`}
-      >
-        {totals.retail > 0
-          ? fmtRate((totals.operatingProfit * PL_CALC.retailVatFactor) / totals.retail)
-          : "—"}
-      </td>
     </tr>
   );
 }
@@ -1258,6 +1679,8 @@ function StoreModal({
   const isActualMode = isActualMonth(selectedMonth);
   const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
+  const [storeTagDetailOpen, setStoreTagDetailOpen] = useState(false);
+  const [storeCogsRateOpen, setStoreCogsRateOpen] = useState(false);
   const [storeTableSortKey, setStoreTableSortKey] = useState<StoreTableSortKey>("retail");
   const [storeTableSortDir, setStoreTableSortDir] = useState<"asc" | "desc">("desc");
   const toggleGroup = (key: keyof OpenGroups) =>
@@ -1284,6 +1707,8 @@ function StoreModal({
     setSelectedStoreCode(null);
     setStoreTableSortKey("retail");
     setStoreTableSortDir("desc");
+    setStoreTagDetailOpen(false);
+    setStoreCogsRateOpen(false);
   }, [dealer.accountId]);
 
   const csvStores = storeRetailMap[brand]?.[dealer.accountId] ?? [];
@@ -1713,6 +2138,13 @@ function StoreModal({
     ? (selectedRow.retail / retail2025) * 100
     : null;
 
+  const dealerNameLabel = dealerDisplayName(dealer.accountNameKr, dealer.accountNameEn);
+
+  const modalBodyColSpan = useMemo(
+    () => countStoreModalBodyCols(isActualMode, storeTagDetailOpen, storeCogsRateOpen, openGroups),
+    [isActualMode, storeTagDetailOpen, storeCogsRateOpen, openGroups],
+  );
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -1725,12 +2157,16 @@ function StoreModal({
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-slate-400">({dealer.accountId})</span>
-            {dealer.accountNameKr && (
+            {dealerNameLabel && (
               <span
                 className="text-sm font-bold text-slate-800 cursor-default"
-                title={dealer.accountNameEn || undefined}
+                title={
+                  dealer.accountNameKr.trim()
+                    ? dealer.accountNameEn.trim() || undefined
+                    : undefined
+                }
               >
-                {dealer.accountNameKr}
+                {dealerNameLabel}
               </span>
             )}
             <span className="ml-2 rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
@@ -1840,7 +2276,14 @@ function StoreModal({
         )}
 
         <div className="overflow-auto flex-1">
-          <table className="min-w-full text-right text-xs">
+          <table className="min-w-full w-full table-fixed text-right text-xs">
+            <PlTableColGroup
+              variant="store"
+              openGroups={openGroups}
+              isActualMode={isActualMode}
+              storeTagDetailOpen={storeTagDetailOpen}
+              storeCogsRateOpen={storeCogsRateOpen}
+            />
             <PLTableHead
               firstColLabel="매장코드 · 매장명"
               variant="store"
@@ -1857,13 +2300,25 @@ function StoreModal({
                 onSort: onStoreTableSort,
               }}
               isActualMode={isActualMode}
+              storeTagDetailOpen={storeTagDetailOpen}
+              onStoreTagDetailToggle={() => setStoreTagDetailOpen((v) => !v)}
+              storeCogsRateOpen={storeCogsRateOpen}
+              onStoreCogsRateToggle={() => setStoreCogsRateOpen((v) => !v)}
             />
             {storeRows.length > 0 && (
               <tfoot className="sticky bottom-0 z-20">
-                <TotalRow totals={storeTotals} variant="store" selectedMonth={selectedMonth} openGroups={openGroups} isActualMode={isActualMode} />
+                <TotalRow
+                  totals={storeTotals}
+                  variant="store"
+                  selectedMonth={selectedMonth}
+                  openGroups={openGroups}
+                  isActualMode={isActualMode}
+                  storeTagDetailOpen={storeTagDetailOpen}
+                  storeCogsRateOpen={storeCogsRateOpen}
+                />
               </tfoot>
             )}
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-200">
               {sortedModalStoreRows.map((row, i) => {
                 const isSel = row.storeCode === selectedStoreCode;
                 const gmr = plGrossMarginRate(row.retail, row.grossProfit);
@@ -1893,33 +2348,67 @@ function StoreModal({
                     <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left whitespace-nowrap">
                       <span className="text-[10px] text-slate-400 mr-1.5">({row.storeCode})</span>
                       <span className="text-slate-700 font-medium">{row.storeName}</span>
-                      {row.shopNmCn ? (
+                      {!isActualMode && row.shopNmCn ? (
                         <>
                           <span className="text-slate-300 mx-1">|</span>
                           <span className="text-slate-600 font-medium">{row.shopNmCn}</span>
                         </>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-slate-600 text-center whitespace-nowrap border-l border-slate-100">
+                    <td className="px-3 py-2 text-slate-600 text-center whitespace-nowrap border-l border-slate-200">
                       {storeDirectCostMap[row.storeCode]?.storeType?.trim() || "—"}
                     </td>
                     <td className="px-3 py-2 text-slate-600 text-center whitespace-nowrap">
                       {storeDirectCostMap[row.storeCode]?.tradeZone?.trim() || "—"}
                     </td>
-                    <td className="px-3 py-2 text-slate-700 border-l border-slate-100">{fmt(row.tag)}</td>
+                    {!isActualMode && (
+                      <td className="px-3 py-2 text-slate-700 border-l border-slate-200">{fmt(row.tag)}</td>
+                    )}
                     {isActualMode && (
                       <>
-                        <td className="px-3 py-2 text-slate-500">{row.tagApparel ? fmt(row.tagApparel) : "—"}</td>
-                        <td className="px-3 py-2 text-slate-500">{row.tagAcc ? fmt(row.tagAcc) : "—"}</td>
-                        <td className="px-3 py-2 text-slate-400">{row.tagEtc ? fmt(row.tagEtc) : "—"}</td>
+                        <td className="px-3 py-2 text-slate-700 border-l border-slate-200">{fmt(row.tag)}</td>
+                        {storeTagDetailOpen && (
+                          <>
+                            <td className="px-3 py-2 text-slate-500">{row.tagApparel ? fmt(row.tagApparel) : "—"}</td>
+                            <td className="px-3 py-2 text-slate-500">{row.tagAcc ? fmt(row.tagAcc) : "—"}</td>
+                            <td className="px-3 py-2 text-slate-400">{row.tagEtc ? fmt(row.tagEtc) : "—"}</td>
+                          </>
+                        )}
                       </>
                     )}
                     <td className="px-3 py-2 text-slate-700">{fmt(row.retail)}</td>
-                    <td className="px-3 py-2 text-slate-500 border-l border-slate-100">{fmtRate(row.cogsRate)}</td>
-                    <td className="px-3 py-2 text-slate-700">{fmt(row.cogs)}</td>
-                    <td className="px-3 py-2 text-slate-700 border-l border-slate-100">{fmt(row.grossProfit)}</td>
+                    {isActualMode && (
+                      <td className="px-3 py-2 text-slate-600">{plActualDiscountRateDisplay(row.tag, row.retail)}</td>
+                    )}
+                    {(!isActualMode || storeCogsRateOpen) && (
+                      <td className="px-3 py-2 text-slate-500 border-l border-slate-200">{fmtRate(row.cogsRate)}</td>
+                    )}
+                    <td
+                      className={`px-3 py-2 text-slate-700 ${
+                        isActualMode && !storeCogsRateOpen ? "border-l border-slate-200" : ""
+                      }`}
+                    >
+                      {fmt(row.cogs)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 border-l border-slate-200">{fmt(row.grossProfit)}</td>
                     <td className={`px-3 py-2 ${gmr === null ? "text-slate-300" : "text-slate-700"}`}>
                       {gmr === null ? "—" : fmtRate(gmr)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 font-semibold border-l border-slate-200 ${
+                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
+                      }`}
+                    >
+                      {fmt(row.operatingProfit)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 font-semibold ${
+                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
+                      }`}
+                    >
+                      {row.retail > 0
+                      ? fmtRate((row.operatingProfit * PL_CALC.retailVatFactor) / row.retail)
+                      : "—"}
                     </td>
                     <DirectCostCells
                       variant="store"
@@ -1940,28 +2429,12 @@ function StoreModal({
                       payFee={row.payFee}
                       othersLine={row.othersLine}
                     />
-                    <td
-                      className={`px-3 py-2 font-semibold border-l border-slate-300 ${
-                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
-                      }`}
-                    >
-                      {fmt(row.operatingProfit)}
-                    </td>
-                    <td
-                      className={`px-3 py-2 font-semibold ${
-                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
-                      }`}
-                    >
-                      {row.retail > 0
-                      ? fmtRate((row.operatingProfit * PL_CALC.retailVatFactor) / row.retail)
-                      : "—"}
-                    </td>
                   </tr>
                 );
               })}
               {storeRows.length === 0 && (
                 <tr>
-                  <td colSpan={1 + DATA_COLS_STORE} className="py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={1 + modalBodyColSpan} className="py-10 text-center text-slate-400 text-sm">
                     매장 데이터가 없습니다.
                   </td>
                 </tr>
@@ -1990,6 +2463,7 @@ export default function PLView({
   const [modalDealer, setModalDealer] = useState<DealerPL | null>(null);
   const [calcLogicOpen, setCalcLogicOpen] = useState(false);
   const [dealerOpenGroups, setDealerOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
+  const [dealerCogsRateOpen, setDealerCogsRateOpen] = useState(false);
   const toggleDealerGroup = useCallback(
     (key: keyof OpenGroups) => setDealerOpenGroups((prev) => ({ ...prev, [key]: !prev[key] })),
     [],
@@ -2204,6 +2678,24 @@ export default function PLView({
     [rows],
   );
 
+  /** 대리상 표 합계용: 각 행과 동일 기준 활성 매장 수 합 */
+  const dealerTotalActiveStores = useMemo(() => {
+    if (rows.length === 0) return 0;
+    if (isActual) {
+      const m = (selectedMonth as { kind: "actual"; m: number }).m;
+      return rows.reduce(
+        (sum, r) => sum + countActiveActualStores(actualStoreMap[r.accountId] ?? [], m),
+        0,
+      );
+    }
+    return rows.reduce(
+      (sum, r) =>
+        sum +
+        countActiveStoresForPeriod(storeRetailMap[activeBrand]?.[r.accountId] ?? [], selectedMonth),
+      0,
+    );
+  }, [rows, isActual, selectedMonth, actualStoreMap, storeRetailMap, activeBrand]);
+
   return (
     <>
       <div className="space-y-4">
@@ -2268,7 +2760,13 @@ export default function PLView({
         )}
 
         <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-right text-xs">
+          <table className="min-w-full w-full table-fixed text-right text-xs">
+            <PlTableColGroup
+              variant="dealer"
+              openGroups={dealerOpenGroups}
+              isActualMode={isActual}
+              dealerCogsRateOpen={dealerCogsRateOpen}
+            />
             <PLTableHead
               firstColLabel="대리상명"
               variant="dealer"
@@ -2279,10 +2777,25 @@ export default function PLView({
                   ? plActualMonthCogsRateLabel(selectedMonth.m)
                   : "25년 출고율"
               }
+              dealerCogsRateOpen={dealerCogsRateOpen}
+              onDealerCogsRateToggle={() => setDealerCogsRateOpen((v) => !v)}
+              isActualMode={isActual}
             />
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-200">
+              {rows.length > 0 && (
+                <TotalRow
+                  totals={totals}
+                  variant="dealer"
+                  selectedMonth={selectedMonth}
+                  openGroups={dealerOpenGroups}
+                  dealerTotalActiveStores={dealerTotalActiveStores}
+                  dealerCogsRateOpen={dealerCogsRateOpen}
+                  isActualMode={isActual}
+                />
+              )}
               {rows.map((row, i) => {
                 const gmr = plGrossMarginRate(row.retail, row.grossProfit);
+                const rowNameLabel = dealerDisplayName(row.accountNameKr, row.accountNameEn);
                 const activeStoreCount = isActual
                   ? countActiveActualStores(
                       actualStoreMap[row.accountId] ?? [],
@@ -2310,12 +2823,16 @@ export default function PLView({
                   >
                     <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left whitespace-nowrap">
                       <span className="text-slate-400 mr-1 text-[10px]">({row.accountId})</span>
-                      {row.accountNameKr && (
+                      {rowNameLabel && (
                         <span
                           className="text-slate-700 font-medium cursor-default"
-                          title={row.accountNameEn || undefined}
+                          title={
+                            row.accountNameKr.trim()
+                              ? row.accountNameEn.trim() || undefined
+                              : undefined
+                          }
                         >
-                          {row.accountNameKr}
+                          {rowNameLabel}
                         </span>
                       )}
                       {activeStoreCount > 0 && (
@@ -2324,13 +2841,38 @@ export default function PLView({
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-slate-700 border-l border-slate-100">{fmt(row.tag)}</td>
+                    <td className="px-3 py-2 text-slate-700 border-l border-slate-200">{fmt(row.tag)}</td>
                     <td className="px-3 py-2 text-slate-700">{fmt(row.retail)}</td>
-                    <td className="px-3 py-2 text-slate-500 border-l border-slate-100">{fmtRate(row.cogsRate)}</td>
-                    <td className="px-3 py-2 text-slate-700">{fmt(row.cogs)}</td>
-                    <td className="px-3 py-2 text-slate-700 border-l border-slate-100">{fmt(row.grossProfit)}</td>
+                    {isActual && (
+                      <td className="px-3 py-2 text-slate-600">{plActualDiscountRateDisplay(row.tag, row.retail)}</td>
+                    )}
+                    {dealerCogsRateOpen && (
+                      <td className="px-3 py-2 text-slate-500 border-l border-slate-200">{fmtRate(row.cogsRate)}</td>
+                    )}
+                    <td
+                      className={`px-3 py-2 text-slate-700 ${!dealerCogsRateOpen ? "border-l border-slate-200" : ""}`}
+                    >
+                      {fmt(row.cogs)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 border-l border-slate-200">{fmt(row.grossProfit)}</td>
                     <td className={`px-3 py-2 ${gmr === null ? "text-slate-300" : "text-slate-700"}`}>
                       {gmr === null ? "—" : fmtRate(gmr)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 font-semibold border-l border-slate-200 ${
+                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
+                      }`}
+                    >
+                      {fmt(row.operatingProfit)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 font-semibold ${
+                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
+                      }`}
+                    >
+                      {row.retail > 0
+                      ? fmtRate((row.operatingProfit * PL_CALC.retailVatFactor) / row.retail)
+                      : "—"}
                     </td>
                     <DirectCostCells
                       variant="dealer"
@@ -2348,29 +2890,12 @@ export default function PLView({
                       packaging={row.packaging}
                       payFee={row.payFee}
                       othersLine={row.othersLine}
+                      activeStoreCount={activeStoreCount}
+                      showHeadcountCol={dealerOpenGroups.labor}
                     />
-                    <td
-                      className={`px-3 py-2 font-semibold border-l border-slate-300 ${
-                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
-                      }`}
-                    >
-                      {fmt(row.operatingProfit)}
-                    </td>
-                    <td
-                      className={`px-3 py-2 font-semibold ${
-                        row.operatingProfit >= 0 ? "text-blue-700" : "text-red-600"
-                      }`}
-                    >
-                      {row.retail > 0
-                      ? fmtRate((row.operatingProfit * PL_CALC.retailVatFactor) / row.retail)
-                      : "—"}
-                    </td>
                   </tr>
                 );
               })}
-              {rows.length > 0 && (
-                <TotalRow totals={totals} variant="dealer" selectedMonth={selectedMonth} openGroups={dealerOpenGroups} />
-              )}
             </tbody>
           </table>
 

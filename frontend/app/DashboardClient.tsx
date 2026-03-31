@@ -6,7 +6,7 @@ import StockView, { type AccountNameMap, DEFAULT_GROWTH } from "./components/Sto
 import StockSimuView from "./components/StockSimuView";
 import PLView from "./components/PLView";
 import { TableIcon, ChartBarIcon, LayoutDashboardIcon, Square2StackIcon } from "./components/Icons";
-import { DEFAULT_TARGET_WEEKS } from "../lib/dealerMetrics";
+import { DEFAULT_TARGET_WEEKS, DEFAULT_SELL_THROUGH_RATES, type SellThroughRates } from "../lib/dealerMetrics";
 
 interface Props {
   data2025: StockData | null;
@@ -59,7 +59,11 @@ export default function DashboardClient({
   // 목표 탭·simu 탭 공유 state
   const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
   const [targetWeeks, setTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
-  const [sellThrough, setSellThrough] = useState(70);
+  const [sellThroughRates, setSellThroughRates] = useState<SellThroughRates>(() => ({
+    ...DEFAULT_SELL_THROUGH_RATES,
+    bySeason: { ...DEFAULT_SELL_THROUGH_RATES.bySeason },
+    yearGroup: { ...DEFAULT_SELL_THROUGH_RATES.yearGroup },
+  }));
 
   useEffect(() => {
     fetch("/data/growth_rates_default.json")
@@ -117,7 +121,7 @@ export default function DashboardClient({
             accountNameMap={accountNameMap}
             growthRates={growthRates}
             targetWeeks={targetWeeks}
-            sellThrough={sellThrough}
+            sellThroughRates={sellThroughRates}
             retailDw2025={retailDw2025}
           />
         )}
@@ -137,8 +141,8 @@ export default function DashboardClient({
             onGrowthRatesChange={setGrowthRates}
             targetWeeks={targetWeeks}
             onTargetWeeksChange={setTargetWeeks}
-            sellThrough={sellThrough}
-            onSellThroughChange={setSellThrough}
+            sellThroughRates={sellThroughRates}
+            onSellThroughRatesChange={setSellThroughRates}
           />
         )}
         {activeTab === "pl" && (

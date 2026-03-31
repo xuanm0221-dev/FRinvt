@@ -15,9 +15,32 @@ import {
 const OTB_SEASONS = new Set(["26S", "26F", "27S", "27F"]);
 const OTB_SEASONS_ARR = ["26S", "26F", "27S", "27F"] as const;
 
-/** 연차별 고정 sellthrough: 1년차=70%, 2년차=85%, 과시즌=100% */
-const ST_YEAR_GROUP: Record<string, number> = { "1년차": 70, "2년차": 85 };
-const ST_OLD_PCT = 100;
+/** 2026 의류 판매 = (기초+매입)×% — 시즌·연차·과시즌별 (27F는 항상 0%) */
+export interface SellThroughRates {
+  bySeason: Record<string, number>;
+  /** bySeason 에 없는 시즌 코드 */
+  currentDefault: number;
+  yearGroup: Record<string, number>;
+  oldSeason: number;
+}
+
+export const DEFAULT_SELL_THROUGH_RATES: SellThroughRates = {
+  bySeason: { "27S": 10, "26F": 50, "26S": 70, "27F": 0 },
+  currentDefault: 70,
+  yearGroup: { "1년차": 70, "2년차": 85 },
+  oldSeason: 100,
+};
+
+function sellThroughPctForSeason(season: string, rates: SellThroughRates): number {
+  if (season === "27F") return 0;
+  const v = rates.bySeason[season];
+  return v !== undefined ? v : rates.currentDefault;
+}
+
+function sellThroughPctForYearGroup(label: string, rates: SellThroughRates): number {
+  const v = rates.yearGroup[label];
+  return v !== undefined ? v : rates.currentDefault;
+}
 export const ACC_ORDER = ["신발", "모자", "가방", "기타"] as const;
 export const DEFAULT_TARGET_WEEKS: Record<string, number> = {
   신발: 30,
@@ -406,7 +429,7 @@ function sumInboundForAccount(
 /**
  * 단일 계정의 의류·ACC 지표 계산 (대리상별 상세표용)
  * retailPrev, inboundPrev: 전년(2025) 데이터. year=2026일 때 YOY 계산에 사용.
- * 의류: 판매 = (기초+매입) × sellThrough%, 기말재고 = 기초+매입−판매
+ * 의류: 판매 = (기초+매입) × sellThrough%, 기말재고 = 기초+매입−판매 (2026만 공식 적용)
  */
 export function computeAccountMetrics(
   acc: AccountRow,
@@ -420,7 +443,7 @@ export function computeAccountMetrics(
   appOtb: AppOtbData | null,
   year: string,
   targetWeeks: Record<string, number> = DEFAULT_TARGET_WEEKS,
-  sellThroughPct: number = 70,
+  sellThroughRates: SellThroughRates = DEFAULT_SELL_THROUGH_RATES,
   retailDw2025: RetailData | null = null
 ): DealerAccountMetrics {
   const merged = mergeAccounts(brand, stock, retail, inbound, appOtb);
@@ -594,7 +617,8 @@ export function computeAccountMetrics(
   for (const { season, data } of rows.apparelCurrent) {
     const p = canCalcOtb ? sesPurchase(season) : 0;
     const purch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", season) : p;
-    const sales = useApparelFormula ? Math.round((data.base + purch) * (sellThroughPct / 100)) : data.sales;
+    const stPct = sellThroughPctForSeason(season, sellThroughRates);
+    const sales = useApparelFormula ? Math.round((data.base + purch) * (stPct / 100)) : data.sales;
     const ending = data.base + purch - sales;
     const prev = prevBySeason.get(prevSeason(season));
     const prevPs = posPrevSalesBySeason.get(prevSeason(season)) ?? 0;
@@ -615,7 +639,7 @@ export function computeAccountMetrics(
   }
   const apparelYearGroups: ApparelYearGroupDetail[] = [];
   for (const grp of rows.apparelYearGroups) {
-    const grpSt = ST_YEAR_GROUP[grp.label] ?? sellThroughPct;
+    const grpSt = sellThroughPctForYearGroup(grp.label, sellThroughRates);
     let grpPurchase = 0;
     const seasons: ApparelSeasonDetail[] = [];
     let grpPosPrev = 0;
@@ -679,7 +703,9 @@ export function computeAccountMetrics(
   let apparelOld: ApparelSeasonDetail | null = null;
   if (rows.apparelOld) {
     const oldPurch = useInbound ? sumInboundForAccount(inbound!, brand, acc.account_id, "의류", "과시즌") : 0;
-    const oldSales = useApparelFormula ? Math.round((rows.apparelOld.base + oldPurch) * (ST_OLD_PCT / 100)) : rows.apparelOld.sales;
+    const oldSales = useApparelFormula
+      ? Math.round((rows.apparelOld.base + oldPurch) * (sellThroughRates.oldSeason / 100))
+      : rows.apparelOld.sales;
     const ending = rows.apparelOld.base + oldPurch - oldSales;
     const oldPrev = prevBySeason.get("과시즌");
     const oldPrevPs = posPrevSalesBySeason.get("과시즌") ?? 0;
