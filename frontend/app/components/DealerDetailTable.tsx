@@ -1233,9 +1233,11 @@ function DealerRow({
             ) : (
               <ChevronRightIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             )}
-            <span className="whitespace-pre-line">
-              ({m.account_id}) {displayEn}
-              {displayKr ? `\n       ${displayKr}` : ""}
+            <span
+              className="cursor-default"
+              title={displayEn || undefined}
+            >
+              ({m.account_id}) {displayKr || displayEn}
             </span>
           </div>
         </td>

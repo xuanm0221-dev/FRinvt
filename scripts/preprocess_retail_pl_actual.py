@@ -48,11 +48,19 @@ SELECT
     MAX(COALESCE(sm.shop_nm_cn, ''))     AS shop_nm_cn,
     MAX(COALESCE(sm.city_tier_nm, ''))   AS city_tier_nm,
     SUM(COALESCE(a.tag_amt,  0))      AS tag_amt,
-    SUM(COALESCE(a.sale_amt, 0))      AS sale_amt
+    SUM(COALESCE(a.sale_amt, 0))      AS sale_amt,
+    SUM(CASE WHEN COALESCE(p.parent_prdt_kind_nm, '') = '의류'
+             THEN COALESCE(a.tag_amt, 0) ELSE 0 END) AS tag_apparel,
+    SUM(CASE WHEN COALESCE(p.parent_prdt_kind_nm, '') = 'ACC'
+             THEN COALESCE(a.tag_amt, 0) ELSE 0 END) AS tag_acc,
+    SUM(CASE WHEN COALESCE(p.parent_prdt_kind_nm, '') NOT IN ('의류', 'ACC')
+             THEN COALESCE(a.tag_amt, 0) ELSE 0 END) AS tag_etc
 FROM FNF.CHN.dw_sale a
 JOIN FNF.CHN.MST_SHOP_ALL sm
   ON a.shop_id = sm.shop_id
  AND sm.fr_or_cls = 'FR'
+LEFT JOIN FNF.PRCS.DB_PRDT p
+  ON a.part_cd = p.part_cd
 WHERE a.brd_cd IN ('M', 'I', 'X')
   AND a.sale_dt >= DATE '{start_dt}'
   AND a.sale_dt <  DATE '{end_dt}'
@@ -184,10 +192,16 @@ def build_json(df: pd.DataFrame, region_map: dict[str, str], year: str = "2026")
 
                 months: dict[str, int] = {}
                 months_sale: dict[str, int] = {}
+                months_apparel: dict[str, int] = {}
+                months_acc: dict[str, int] = {}
+                months_etc: dict[str, int] = {}
                 for _, row in store_grp.iterrows():
                     m = int(row["month"])
-                    months[str(m)]      = int(row["tag_amt"])
-                    months_sale[str(m)] = int(row["sale_amt"])
+                    months[str(m)]         = int(row["tag_amt"])
+                    months_sale[str(m)]    = int(row["sale_amt"])
+                    months_apparel[str(m)] = int(row.get("tag_apparel", 0) or 0)
+                    months_acc[str(m)]     = int(row.get("tag_acc", 0) or 0)
+                    months_etc[str(m)]     = int(row.get("tag_etc", 0) or 0)
 
                 stores.append({
                     "storeCode": store_code,
@@ -198,8 +212,11 @@ def build_json(df: pd.DataFrame, region_map: dict[str, str], year: str = "2026")
                     "regionCd":  region_cd,
                     "regionKr":  region_kr,
                     "cityTierNm": city_tier_nm,
-                    "months":      months,
-                    "months_sale": months_sale,
+                    "months":          months,
+                    "months_sale":     months_sale,
+                    "months_apparel":  months_apparel,
+                    "months_acc":      months_acc,
+                    "months_etc":      months_etc,
                 })
 
             stores.sort(key=lambda x: x["storeCode"])
@@ -243,8 +260,11 @@ def merge_new_months(existing: dict, df: pd.DataFrame, region_map: dict[str, str
                         store_by_code[sc] = new_store
                     else:
                         ex_store = store_by_code[sc]
-                        ex_store["months"]      = _merge_months_dict(ex_store.get("months", {}),      new_store.get("months", {}))
-                        ex_store["months_sale"] = _merge_months_dict(ex_store.get("months_sale", {}), new_store.get("months_sale", {}))
+                        ex_store["months"]         = _merge_months_dict(ex_store.get("months", {}),         new_store.get("months", {}))
+                        ex_store["months_sale"]    = _merge_months_dict(ex_store.get("months_sale", {}),    new_store.get("months_sale", {}))
+                        ex_store["months_apparel"] = _merge_months_dict(ex_store.get("months_apparel", {}), new_store.get("months_apparel", {}))
+                        ex_store["months_acc"]     = _merge_months_dict(ex_store.get("months_acc", {}),     new_store.get("months_acc", {}))
+                        ex_store["months_etc"]     = _merge_months_dict(ex_store.get("months_etc", {}),     new_store.get("months_etc", {}))
                         # 마스터 속성 갱신 (가장 최신 month 기준)
                         for key in (
                             "storeType",

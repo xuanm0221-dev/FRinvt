@@ -126,8 +126,11 @@ export interface RetailStoreRow {
   tradeZone: string;      // trade_zone_nm (H/F1 등)
   regionCd: string;       // sale_region_cd (중국어)
   regionKr: string;       // region_nm (한국어, FR수익구조.csv 매핑)
-  months: Record<string, number>;       // 월별 tag_amt
-  months_sale: Record<string, number>;  // 월별 sale_amt (리테일V+)
+  months: Record<string, number>;           // 월별 tag_amt
+  months_sale: Record<string, number>;      // 월별 sale_amt (리테일V+)
+  months_apparel?: Record<string, number>;  // 월별 의류 tag_amt
+  months_acc?: Record<string, number>;      // 월별 ACC tag_amt
+  months_etc?: Record<string, number>;      // 월별 미정 tag_amt
 }
 
 export interface RetailStoreAccount {

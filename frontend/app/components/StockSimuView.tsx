@@ -386,9 +386,14 @@ export default function StockSimuView({
                     <td className="px-3 py-2 text-left">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] text-slate-400">({r.accountId})</span>
-                        {r.nameKr && <span className="text-sm font-bold text-slate-800">{r.nameKr}</span>}
-                        {r.nameKr && r.nameEn && <span className="text-slate-300 text-sm">|</span>}
-                        {r.nameEn && <span className="text-sm font-semibold text-slate-500">{r.nameEn}</span>}
+                        {r.nameKr && (
+                          <span
+                            className="text-sm font-bold text-slate-800 cursor-default"
+                            title={r.nameEn || undefined}
+                          >
+                            {r.nameKr}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2 tabular-nums text-slate-700">
