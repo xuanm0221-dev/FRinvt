@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { BrandKey, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
 import StockView, { type AccountNameMap, DEFAULT_GROWTH } from "./components/StockView";
+import OverviewScenario1Table from "./components/OverviewScenario1Table";
 import StockSimuView from "./components/StockSimuView";
 import PLView from "./components/PLView";
 import { TableIcon, ChartBarIcon, LayoutDashboardIcon, Square2StackIcon } from "./components/Icons";
@@ -55,6 +56,7 @@ export default function DashboardClient({
   actualCogsRateMap = null,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("stock");
+  const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
 
   // 목표 탭·simu 탭 공유 state
   const [growthRates, setGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
@@ -102,11 +104,25 @@ export default function DashboardClient({
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         {activeTab === "overview" && (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-20 text-center">
-            <p className="text-sm font-medium text-slate-600">종합분석</p>
-            <p className="mt-2 text-xs text-slate-500">
-              재고자산(목표)·재고자산(PL기준)·PL 연계 분석은 이후 이 탭에 추가 예정입니다.
-            </p>
+          <div className="flex flex-wrap items-start gap-8">
+            <OverviewScenario1Table
+              data2025={data2025}
+              data2026={data2026}
+              inbound2025={inbound2025}
+              inbound2026={inbound2026}
+              retail2026={retail2026}
+              retailDw2025={retailDw2025}
+              appOtb2026={appOtb2026}
+              accountNameMap={accountNameMap}
+              brand={selectedBrand}
+              onBrandChange={setSelectedBrand}
+              growthRates={growthRates}
+              targetWeeks={targetWeeks}
+              sellThroughRates={sellThroughRates}
+            />
+            <div className="min-h-[100px] flex-1 rounded-xl border border-dashed border-slate-200 bg-slate-50/40 p-4 text-center text-xs text-slate-400">
+              시나리오 2·3 영역 (추후)
+            </div>
           </div>
         )}
         {activeTab === "stockSimu" && (
@@ -137,6 +153,8 @@ export default function DashboardClient({
             retailDw2025={retailDw2025}
             appOtb2026={appOtb2026}
             accountNameMap={accountNameMap}
+            selectedBrand={selectedBrand}
+            onSelectedBrandChange={setSelectedBrand}
             growthRates={growthRates}
             onGrowthRatesChange={setGrowthRates}
             targetWeeks={targetWeeks}

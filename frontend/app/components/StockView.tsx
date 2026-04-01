@@ -44,6 +44,9 @@ interface Props {
   onTargetWeeksChange?: (weeks: Record<string, number>) => void;
   sellThroughRates?: SellThroughRates;
   onSellThroughRatesChange?: (next: SellThroughRates) => void;
+  /** 상위(DashboardClient)와 브랜드 동기화 — 종합분석 탭과 동일 브랜드 유지 */
+  selectedBrand?: BrandKey;
+  onSelectedBrandChange?: (b: BrandKey) => void;
 }
 
 type RetailSectionHeaderMode = "inverse" | "source2026" | "source2025Dw";
@@ -489,9 +492,13 @@ export default function StockView({
   onTargetWeeksChange,
   sellThroughRates: sellThroughRatesProp,
   onSellThroughRatesChange,
+  selectedBrand: selectedBrandProp,
+  onSelectedBrandChange,
 }: Props) {
   const [activeYear, setActiveYear] = useState<Year>("2026");
-  const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
+  const [internalBrand, setInternalBrand] = useState<BrandKey>("MLB");
+  const selectedBrand = selectedBrandProp ?? internalBrand;
+  const setSelectedBrand = onSelectedBrandChange ?? setInternalBrand;
   const [internalGrowthRates, setInternalGrowthRates] = useState<Record<BrandKey, number>>(DEFAULT_GROWTH);
   const [internalTargetWeeks, setInternalTargetWeeks] = useState<Record<string, number>>(DEFAULT_TARGET_WEEKS);
   const [internalSellThroughRates, setInternalSellThroughRates] = useState<SellThroughRates>(() => ({
