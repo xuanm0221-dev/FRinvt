@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BrandKey,
   StockData,
@@ -23,6 +23,23 @@ import {
   type SellThroughRates,
 } from "../../lib/dealerMetrics";
 import { blendRetail, type AccountNameMap } from "./StockView";
+
+type SortColumn = "name" | "ending" | "opProfit";
+type SortDir = "desc" | "asc";
+type SortState = { col: SortColumn; dir: SortDir } | null; // null = 기본 순서
+
+function totalEnding26(m: { apparel: { ending: number }; acc: { ending: number } }): number {
+  return m.apparel.ending + m.acc.ending;
+}
+
+function sortIcon(state: SortState, col: SortColumn): string {
+  if (!state || state.col !== col) return "↕";
+  return state.dir === "desc" ? "↓" : "↑";
+}
+function ariaSort(state: SortState, col: SortColumn): "descending" | "ascending" | "none" {
+  if (!state || state.col !== col) return "none";
+  return state.dir === "desc" ? "descending" : "ascending";
+}
 
 // ── PL 계산 상수 (PLView.tsx의 PL_CALC와 동일) ───────────────────────
 const OVW_PL = {
@@ -210,6 +227,15 @@ export default function OverviewScenario1Table({
 }: OverviewScenario1TableProps) {
   const targetWeeks = targetWeeksProp ?? DEFAULT_TARGET_WEEKS;
   const sellThroughRates = sellThroughRatesProp ?? DEFAULT_SELL_THROUGH_RATES;
+  const [sortState, setSortState] = useState<SortState>(null);
+
+  const cycleSort = (col: SortColumn) => {
+    setSortState((s) => {
+      if (!s || s.col !== col) return { col, dir: "desc" };
+      if (s.dir === "desc") return { col, dir: "asc" };
+      return null;
+    });
+  };
 
   const { metrics, totalRow, metrics2025Map, totalRow2025, opProfit2026Map, opProfit2025Map } = useMemo(() => {
     const blended =
@@ -414,6 +440,36 @@ export default function OverviewScenario1Table({
     retailYoy2025Map,
   ]);
 
+  const displayMetrics = useMemo(() => {
+    if (!sortState) return metrics;
+    const { col, dir } = sortState;
+    const arr = [...metrics];
+    arr.sort((a, b) => {
+      let ka: number | string;
+      let kb: number | string;
+      if (col === "ending") {
+        ka = totalEnding26(a);
+        kb = totalEnding26(b);
+      } else if (col === "opProfit") {
+        ka = opProfit2026Map.get(a.account_id) ?? -Infinity;
+        kb = opProfit2026Map.get(b.account_id) ?? -Infinity;
+      } else {
+        const nameA = accountNameMap[a.account_id]?.account_nm_kr || accountNameMap[a.account_id]?.account_nm_en || a.account_nm_en || a.account_id;
+        const nameB = accountNameMap[b.account_id]?.account_nm_kr || accountNameMap[b.account_id]?.account_nm_en || b.account_nm_en || b.account_id;
+        ka = nameA;
+        kb = nameB;
+      }
+      if (typeof ka === "string" && typeof kb === "string") {
+        const cmp = ka.localeCompare(kb, "ko", { sensitivity: "base" });
+        return dir === "desc" ? -cmp : cmp;
+      }
+      const diff = (ka as number) - (kb as number);
+      if (diff !== 0) return dir === "desc" ? -diff : diff;
+      return String(a.account_id).localeCompare(String(b.account_id), undefined, { numeric: true });
+    });
+    return arr;
+  }, [metrics, sortState, opProfit2026Map, accountNameMap]);
+
   const th =
     "px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-white border-b border-white/20";
   const thSub =
@@ -442,7 +498,7 @@ export default function OverviewScenario1Table({
       : null;
 
   return (
-    <div className="min-w-0 w-1/2">
+    <div className="min-w-0 max-w-[70%]">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h2 className="text-base font-bold text-slate-800">
           시나리오1: 연말 목표 재고자산기준
@@ -472,9 +528,18 @@ export default function OverviewScenario1Table({
             <tr className="bg-[linear-gradient(180deg,#2d5a8e_0%,#245089_100%)]">
               <th
                 rowSpan={2}
-                className={`${th} text-left align-middle border-r border-white/25 whitespace-nowrap`}
+                className="border-b border-white/20 border-r border-white/25 p-0 text-left align-middle text-[10px] font-semibold uppercase tracking-wide text-white whitespace-nowrap"
+                aria-sort={ariaSort(sortState, "name")}
               >
-                대리상명칭
+                <button
+                  type="button"
+                  onClick={() => cycleSort("name")}
+                  title={!sortState || sortState.col !== "name" ? "대리상명칭 가나다순 — 클릭: 내림차순" : sortState.dir === "desc" ? "내림차순 — 클릭: 오름차순" : "오름차순 — 클릭: 기본 순서로"}
+                  className="flex w-full items-center justify-start gap-1 rounded-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  대리상명칭
+                  <span className="opacity-90" aria-hidden>{sortIcon(sortState, "name")}</span>
+                </button>
               </th>
               <th colSpan={2} className={`${th} border-l border-white/20`}>
                 매출성장율
@@ -485,11 +550,35 @@ export default function OverviewScenario1Table({
               <th colSpan={2} className={`${th} border-l border-white/20`}>
                 재고주수
               </th>
-              <th colSpan={2} className={`${th} border-l border-white/20`}>
-                기말재고
+              <th
+                colSpan={3}
+                className="border-b border-white/20 border-l border-white/20 p-0 text-center text-[10px] font-semibold uppercase tracking-wide text-white"
+                aria-sort={ariaSort(sortState, "ending")}
+              >
+                <button
+                  type="button"
+                  onClick={() => cycleSort("ending")}
+                  title={!sortState || sortState.col !== "ending" ? "기말재고(의류+ACC) 합계 기준 — 클릭: 높은 순" : sortState.dir === "desc" ? "내림차순 — 클릭: 낮은 순" : "오름차순 — 클릭: 기본 순서로"}
+                  className="flex w-full items-center justify-center gap-1 rounded-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  기말재고
+                  <span className="tabular-nums opacity-90" aria-hidden>{sortIcon(sortState, "ending")}</span>
+                </button>
               </th>
-              <th colSpan={3} className={`${th} border-l border-white/20`}>
-                영업이익
+              <th
+                colSpan={3}
+                className="border-b border-white/20 border-l border-white/20 p-0 text-center text-[10px] font-semibold uppercase tracking-wide text-white"
+                aria-sort={ariaSort(sortState, "opProfit")}
+              >
+                <button
+                  type="button"
+                  onClick={() => cycleSort("opProfit")}
+                  title={!sortState || sortState.col !== "opProfit" ? "영업이익 기준 — 클릭: 높은 순" : sortState.dir === "desc" ? "내림차순 — 클릭: 낮은 순" : "오름차순 — 클릭: 기본 순서로"}
+                  className="flex w-full items-center justify-center gap-1 rounded-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  영업이익
+                  <span className="tabular-nums opacity-90" aria-hidden>{sortIcon(sortState, "opProfit")}</span>
+                </button>
               </th>
             </tr>
             {/* 2단 헤더 */}
@@ -502,6 +591,7 @@ export default function OverviewScenario1Table({
               <th className={thSub}>전년비</th>
               <th className={`${thSub} border-l border-white/20`}>당년</th>
               <th className={thSub}>전년비</th>
+              <th className={thSub}>전년비(%)</th>
               <th className={`${thSub} border-l border-white/20`}>당년</th>
               <th className={thSub}>전년비</th>
               <th className={thSub}>전년비(%)</th>
@@ -526,9 +616,14 @@ export default function OverviewScenario1Table({
                   {totalRow.acc.weeks != null ? `${totalRow.acc.weeks.toFixed(1)}주` : ""}
                 </td>
                 <td className={td}><Diff v={totalWeeksDiff} unit="주" /></td>
-                {/* 기말재고 당년 / 전년비 */}
+                {/* 기말재고 당년 / 전년비(금액) / 전년비(%) */}
                 <td className={`${td} border-l border-l-slate-300`}>
                   <Num v={totalRow.apparel.ending + totalRow.acc.ending} />
+                </td>
+                <td className={td}>
+                  <DiffAmt v={totalRow2025
+                    ? (totalRow.apparel.ending + totalRow.acc.ending) - (totalRow2025.apparel.ending + totalRow2025.acc.ending)
+                    : null} />
                 </td>
                 <td className={td}><Yoy v={totalEndingYoy} /></td>
                 {/* 영업이익 당년 / 전년비 / 전년비(%) */}
@@ -543,7 +638,7 @@ export default function OverviewScenario1Table({
                 </td>
               </tr>
             )}
-            {metrics.map((m) => {
+            {displayMetrics.map((m) => {
               const names = accountNameMap[m.account_id];
               const displayEn = names?.account_nm_en || m.account_nm_en;
               const displayKr = names?.account_nm_kr;
@@ -591,8 +686,9 @@ export default function OverviewScenario1Table({
                     {m.acc.weeks != null ? `${m.acc.weeks.toFixed(1)}주` : ""}
                   </td>
                   <td className={td}><Diff v={weeksDiff} unit="주" /></td>
-                  {/* 기말재고 당년 / 전년비 */}
+                  {/* 기말재고 당년 / 전년비(금액) / 전년비(%) */}
                   <td className={`${td} border-l border-l-slate-200`}><Num v={curr26Ending} /></td>
+                  <td className={td}><DiffAmt v={prev25Ending > 0 ? curr26Ending - prev25Ending : null} /></td>
                   <td className={td}><Yoy v={endingYoy} /></td>
                   {/* 영업이익 당년 / 전년비 / 전년비(%) */}
                   <td className={`${td} border-l border-l-slate-200 ${op2026 !== null && op2026 >= 0 ? "text-green-600" : op2026 !== null ? "text-red-500" : ""}`}>
@@ -606,7 +702,7 @@ export default function OverviewScenario1Table({
             {metrics.length === 0 && (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={13}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   2026년 목표 재고 지표를 계산할 수 없습니다. 재고·리테일·입고 데이터를

@@ -404,6 +404,36 @@ export function prevSeason(season: string): string {
   return `${(yy - 1).toString().padStart(2, "0")}${season.slice(2)}`;
 }
 
+/**
+ * stock JSON에서 특정 계정·대분류·중분류의 12월 잔액 스냅샷을 반환한다.
+ * 2025년 기말재고 = 월별재고잔액 12월과 동일하게 맞추기 위해 사용.
+ * subKey=null 이면 해당 대분류 전체 중분류 합산.
+ */
+function stockSnapshot12(
+  stock: StockData | null,
+  brand: BrandKey,
+  accountId: string,
+  catKey: string,
+  subKey: string | null
+): number {
+  if (!stock) return 0;
+  const acc = (stock.brands[brand] ?? []).find((a) => a.account_id === accountId);
+  if (!acc) return 0;
+  let s = 0;
+  for (const cat of acc.categories ?? []) {
+    if (cat.대분류 !== catKey) continue;
+    if (subKey === null) {
+      for (const sub of cat.subcategories ?? []) {
+        s += sub.months[12] ?? 0;
+      }
+    } else {
+      const sub = cat.subcategories?.find((x) => x.중분류 === subKey);
+      s += sub?.months[12] ?? 0;
+    }
+  }
+  return s;
+}
+
 function sumInboundForAccount(
   inbound: InboundData,
   brand: BrandKey,
@@ -502,21 +532,22 @@ export function computeAccountMetrics(
     prevApparelBase = prevRows.apparel.base;
     prevApparelPurchase = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", null);
     prevApparelSales = prevRows.apparel.sales;
-    prevApparelEnding = prevApparelBase + prevApparelPurchase - prevApparelSales;
+    // 2025 기말 = 월별재고잔액 12월 스냅샷
+    prevApparelEnding = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", null);
     prevAccSales = prevRows.acc.sales;
     for (const { item, data } of prevRows.accItems) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "ACC", item);
       prevAccPurchase += purch;
-      prevAccEnding += data.base + purch - data.sales;
+      prevAccEnding += stockSnapshot12(stockPrev, brand, acc.account_id, "ACC", item);
     }
   } else if (prevRows) {
     prevApparelBase = prevRows.apparel.base;
     prevApparelSales = prevRows.apparel.sales;
-    prevApparelEnding = prevApparelBase - prevApparelSales;
+    // 2025 기말 = 월별재고잔액 12월 스냅샷
+    prevApparelEnding = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", null);
     prevAccSales = prevRows.acc.sales;
     for (const { item, data } of prevRows.accItems) {
-      const weeklySales = (data.sales / 365) * 7;
-      const ending = weeklySales > 0 ? Math.round(weeklySales * (targetWeeks[item] ?? 30)) : 0;
+      const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "ACC", item);
       prevAccEnding += ending;
       prevAccPurchase += ending - data.base + data.sales;
     }
@@ -525,36 +556,41 @@ export function computeAccountMetrics(
   const prevBySeason = new Map<string, { purchase: number; sales: number; ending: number }>();
   const prevByAccItem = new Map<string, { purchase: number; sales: number; ending: number }>();
   if (prevRows && inboundPrev && hasPrev) {
-    const addPrevSeason = (label: string, base: number, purch: number, actualSales: number) => {
-      prevBySeason.set(label, { purchase: purch, sales: actualSales, ending: base + purch - actualSales });
-    };
     for (const { season, data } of prevRows.apparelCurrent) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
-      addPrevSeason(season, data.base, purch, data.sales);
+      // 2025 기말 = 월별재고잔액 12월 스냅샷
+      const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", season);
+      prevBySeason.set(season, { purchase: purch, sales: data.sales, ending });
     }
     for (const grp of prevRows.apparelYearGroups) {
       for (const { season, data } of grp.seasons) {
         const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", season);
-        addPrevSeason(season, data.base, purch, data.sales);
+        const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", season);
+        prevBySeason.set(season, { purchase: purch, sales: data.sales, ending });
       }
     }
     if (prevRows.apparelOld) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "의류", "과시즌");
-      addPrevSeason("과시즌", prevRows.apparelOld.base, purch, prevRows.apparelOld.sales);
+      const oldEnding = prevRows.apparelOld.base + purch - prevRows.apparelOld.sales;
+      prevBySeason.set("과시즌", { purchase: purch, sales: prevRows.apparelOld.sales, ending: oldEnding });
     }
     for (const { item, data } of prevRows.accItems) {
       const purch = sumInboundForAccount(inboundPrev, brand, acc.account_id, "ACC", item);
-      const ending = data.base + purch - data.sales;
+      // 2025 기말 = 월별재고잔액 12월 스냅샷
+      const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "ACC", item);
       prevByAccItem.set(item, { purchase: purch, sales: data.sales, ending });
     }
   } else if (prevRows && hasPrev) {
     for (const { season, data } of prevRows.apparelCurrent) {
       const sales = data.sales;
-      prevBySeason.set(season, { purchase: 0, sales, ending: data.base - sales });
+      // 의류 시즌별 기말: 해당 시즌 중분류 months[12]
+      const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", season);
+      prevBySeason.set(season, { purchase: 0, sales, ending });
     }
     for (const grp of prevRows.apparelYearGroups) {
       for (const { season, data } of grp.seasons) {
-        prevBySeason.set(season, { purchase: 0, sales: data.sales, ending: data.base - data.sales });
+        const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "의류", season);
+        prevBySeason.set(season, { purchase: 0, sales: data.sales, ending });
       }
     }
     if (prevRows.apparelOld) {
@@ -565,8 +601,8 @@ export function computeAccountMetrics(
       });
     }
     for (const { item, data } of prevRows.accItems) {
-      const weeklySales = (data.sales / 365) * 7;
-      const ending = weeklySales > 0 ? Math.round(weeklySales * (targetWeeks[item] ?? 30)) : 0;
+      // 2025 기말 = 월별재고잔액 12월 스냅샷
+      const ending = stockSnapshot12(stockPrev, brand, acc.account_id, "ACC", item);
       const purch = ending - data.base + data.sales;
       prevByAccItem.set(item, { purchase: purch, sales: data.sales, ending });
     }
@@ -734,7 +770,8 @@ export function computeAccountMetrics(
     apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
   } else {
     apparelSales = rows.apparel.sales;
-    apparelEnding = rows.apparel.base + apparelPurchase - apparelSales;
+    // 2025년: 기말 = 월별재고잔액 12월 스냅샷 (역산 아님)
+    apparelEnding = stockSnapshot12(stock, brand, acc.account_id, "의류", null);
   }
 
   const accItemsDetail: AccItemDetail[] = [];
@@ -747,7 +784,8 @@ export function computeAccountMetrics(
     let purch: number;
     if (useInbound) {
       purch = sumInboundForAccount(inbound!, brand, acc.account_id, "ACC", item);
-      ending = data.base + purch - data.sales;
+      // 2025년: 기말 = 월별재고잔액 12월 스냅샷 (역산 아님)
+      ending = stockSnapshot12(stock, brand, acc.account_id, "ACC", item);
     } else {
       ending = weeklySales > 0 ? Math.round(weeklySales * targetW) : 0;
       purch = ending - data.base + data.sales;
