@@ -16,7 +16,7 @@ import {
   mergeAccounts,
   type SellThroughRates,
 } from "../../lib/dealerMetrics";
-import { calcRetail, blendRetail } from "./StockView";
+import { blendRetail } from "./StockView";
 import { fmtAmt, dealerDisplayName } from "../../lib/utils";
 import type { AccountNameMap } from "./StockView";
 import { ChevronDownIcon, ChevronRightIcon } from "./Icons";
@@ -103,19 +103,13 @@ export default function StockSimuView({
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
   const [purchaseExpanded, setPurchaseExpanded] = useState(false);
 
-  // 2025 역산 리테일 (기초재고 계산용)
-  const retail2025calc = useMemo(
-    () => (data2025 && inbound2025 ? calcRetail(data2025, inbound2025) : null),
-    [data2025, inbound2025]
-  );
-
   // 2026 블렌드 리테일 (매입 계산용)
   const blended2026 = useMemo(
     () =>
-      retail2026 && retail2025calc
-        ? blendRetail(retail2026, retail2025calc, growthRates, retailDw2025).data
+      retail2026
+        ? blendRetail(retail2026, growthRates, retailDw2025).data
         : null,
-    [retail2026, retail2025calc, growthRates, retailDw2025]
+    [retail2026, growthRates, retailDw2025]
   );
 
   // 브랜드별 simu 행 계산
@@ -135,7 +129,7 @@ export default function StockSimuView({
         selectedBrand,
         data2025,
         null,
-        retail2025calc,
+        retailDw2025,
         null,
         inbound2025,
         null,
@@ -151,7 +145,7 @@ export default function StockSimuView({
         data2026,
         data2025,
         blended2026,
-        retail2025calc,
+        retailDw2025,
         inbound2026,
         inbound2025,
         appOtb2026,
@@ -214,7 +208,6 @@ export default function StockSimuView({
     data2026,
     inbound2025,
     inbound2026,
-    retail2025calc,
     blended2026,
     appOtb2026,
     storeRetailMap,

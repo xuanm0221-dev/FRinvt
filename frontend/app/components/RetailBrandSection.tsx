@@ -35,6 +35,28 @@ export default function RetailBrandSection({
   });
   const brandRowTotal = MONTHS.reduce((s, m) => s + (brandTotals[m] ?? 0), 0);
 
+  // 카테고리별 합계 (의류 / ACC / 기타)
+  const catTotals: Record<"의류" | "ACC" | "기타", Record<number, number>> = {
+    "의류": {}, "ACC": {}, "기타": {},
+  };
+  MONTHS.forEach((m) => {
+    let apparel = 0, acc = 0;
+    for (const a of accounts) {
+      for (const cat of a.categories ?? []) {
+        if (cat.대분류 === "의류") apparel += cat.months[m] ?? 0;
+        else if (cat.대분류 === "ACC") acc += cat.months[m] ?? 0;
+      }
+    }
+    catTotals["의류"][m] = apparel;
+    catTotals["ACC"][m] = acc;
+    catTotals["기타"][m] = (brandTotals[m] ?? 0) - apparel - acc;
+  });
+  const catRowTotals = {
+    "의류": MONTHS.reduce((s, m) => s + (catTotals["의류"][m] ?? 0), 0),
+    "ACC": MONTHS.reduce((s, m) => s + (catTotals["ACC"][m] ?? 0), 0),
+    "기타": MONTHS.reduce((s, m) => s + (catTotals["기타"][m] ?? 0), 0),
+  };
+
   const colorClass = INVENTORY_BRAND_ROW_COLOR;
 
   return (
@@ -74,6 +96,26 @@ export default function RetailBrandSection({
           {fmtAmt(brandRowTotal)}
         </td>
       </tr>
+
+      {/* 카테고리 소계 행 (항상 표시) */}
+      {(["의류", "ACC", "기타"] as const).map((cat) => (
+        <tr key={cat} className="bg-sky-50/60">
+          <td className="sticky left-0 z-10 border-b border-stone-100 bg-sky-50/60 px-6 py-2 text-sm text-slate-600 whitespace-nowrap">
+            <span className="ml-4 text-[12px] font-medium text-slate-500">{cat}</span>
+          </td>
+          {MONTHS.map((m) => (
+            <td
+              key={m}
+              className={`whitespace-nowrap border-b border-stone-100 bg-sky-50/60 px-3 py-2 text-right text-[12px] tabular-nums ${estimatedSet.has(m) ? "italic text-slate-400" : "text-slate-600"}`}
+            >
+              {fmtAmt(catTotals[cat][m])}
+            </td>
+          ))}
+          <td className="whitespace-nowrap border-b border-stone-100 bg-sky-100/40 px-3 py-2 text-right text-[12px] text-slate-600 tabular-nums font-medium">
+            {fmtAmt(catRowTotals[cat])}
+          </td>
+        </tr>
+      ))}
 
       {/* 대리상 행 */}
       {open &&

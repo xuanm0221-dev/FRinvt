@@ -119,6 +119,10 @@ export default function DashboardClient({
               growthRates={growthRates}
               targetWeeks={targetWeeks}
               sellThroughRates={sellThroughRates}
+              storeRetailMap={storeRetailMap}
+              storeDirectCostMap={storeDirectCostMap}
+              cogsRateMap={cogsRateMap}
+              retailYoy2025Map={retailYoy2025Map}
             />
             <div className="min-h-[100px] flex-1 rounded-xl border border-dashed border-slate-200 bg-slate-50/40 p-4 text-center text-xs text-slate-400">
               시나리오 2·3 영역 (추후)

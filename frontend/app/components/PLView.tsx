@@ -25,16 +25,27 @@ interface Props {
   retailStore2026?: RetailStoreData | null;
 }
 
-/** 월 선택 모드: annual=연간목표, target=월별목표, actual=월별실적 */
-type MonthOption = "annual" | { kind: "target"; m: number } | { kind: "actual"; m: number };
+/** 월 선택 모드: annual=26년연간목표, annual25=25년연간실적, target=26월별목표, actual=26월별실적, actual25=25월별실적 */
+type MonthOption =
+  | "annual"
+  | "annual25"
+  | { kind: "target";   m: number }
+  | { kind: "actual";   m: number }
+  | { kind: "actual25"; m: number };
 function isActualMonth(opt: MonthOption): opt is { kind: "actual"; m: number } {
   return typeof opt === "object" && opt.kind === "actual";
+}
+function isActual25Month(opt: MonthOption): opt is { kind: "actual25"; m: number } {
+  return typeof opt === "object" && opt.kind === "actual25";
 }
 function isTargetMonth(opt: MonthOption): opt is { kind: "target"; m: number } {
   return typeof opt === "object" && opt.kind === "target";
 }
+function is2025Mode(opt: MonthOption): boolean {
+  return opt === "annual25" || isActual25Month(opt);
+}
 function monthNum(opt: MonthOption): number | null {
-  if (opt === "annual") return null;
+  if (opt === "annual" || opt === "annual25") return null;
   return opt.m;
 }
 type PLTableVariant = "dealer" | "store";
@@ -92,7 +103,7 @@ function avgLaborPerHeadForDisplay(
 ): number {
   if (headcount <= 0) return 0;
   let v = (salary + bonus) / headcount;
-  if (selectedMonth === "annual") v /= PL_CALC.annualMonthsForAvgLabor;
+  if (selectedMonth === "annual" || selectedMonth === "annual25") v /= PL_CALC.annualMonthsForAvgLabor;
   return v;
 }
 
@@ -267,13 +278,15 @@ function plActualMonthCogsRateLabel(month: number): string {
 /** MonthOption → 직렬화 키 (select value용) */
 function optionKey(opt: MonthOption): string {
   if (opt === "annual") return "annual";
+  if (opt === "annual25") return "annual25";
   return `${opt.kind}-${opt.m}`;
 }
 /** 직렬화 키 → MonthOption */
 function parseOptionKey(key: string): MonthOption {
   if (key === "annual") return "annual";
+  if (key === "annual25") return "annual25";
   const [kind, m] = key.split("-");
-  return { kind: kind as "target" | "actual", m: Number(m) };
+  return { kind: kind as "target" | "actual" | "actual25", m: Number(m) };
 }
 
 /** 실적 드롭다운에 노출할 확정 월 수 (retail_store_2026.json 기준 자동 산출) */
@@ -291,7 +304,7 @@ function getActualMonthCount(retailStore: RetailStoreData | null | undefined): n
   return max;
 }
 
-type DropdownOption = { value: MonthOption; label: string; isActual?: boolean };
+type DropdownOption = { value: MonthOption; label: string; isActual?: boolean; is2025?: boolean };
 
 function buildDropdownOptions(actualMonths: number): DropdownOption[] {
   return [
@@ -301,6 +314,12 @@ function buildDropdownOptions(actualMonths: number): DropdownOption[] {
       value: { kind: "actual" as const, m: i + 1 },
       label: plMonthActualLabel(i + 1),
       isActual: true,
+    })),
+    { value: "annual25" as MonthOption, label: "25년 연간실적", is2025: true },
+    ...MONTHS.map((m) => ({
+      value: { kind: "actual25" as const, m },
+      label: `25.${String(m).padStart(2, "0")}(실적)`,
+      is2025: true,
     })),
   ];
 }
@@ -707,9 +726,9 @@ interface StorePL {
   othersLine: number;
 }
 
-/** 2026년 기준 yyyyMM 정수 생성: 월 1~12 → 202601~202612 */
-function ym(month: number): number {
-  return 202600 + month;
+/** yyyyMM 정수 생성: 월 1~12, year 기본값 2026 */
+function ym(month: number, year: 2025 | 2026 = 2026): number {
+  return year * 100 + month;
 }
 
 /** 월 미니멈 임차(하한) = CSV 임차료 / PL_CALC.rentFixedDivisor */
@@ -1922,7 +1941,7 @@ function StoreModal({
     }
 
     const denomByKey = new Map<string, number>();
-    if (month === "annual") {
+    if (month === "annual" || month === "annual25") {
       for (const m of MONTHS) {
         for (const s of activeRetail) {
           if ((s.months[m] ?? 0) <= 0) continue;
@@ -2472,6 +2491,7 @@ export default function PLView({
   const closeModal = useCallback(() => setModalDealer(null), []);
 
   const isActual = isActualMonth(selectedMonth);
+  const is2025 = is2025Mode(selectedMonth);
 
   const actualMonthCount = useMemo(() => getActualMonthCount(retailStore2026), [retailStore2026]);
   const dropdownOptions = useMemo(() => buildDropdownOptions(actualMonthCount), [actualMonthCount]);
@@ -2484,8 +2504,10 @@ export default function PLView({
 
   const plMonthLabel = useMemo(() => {
     if (selectedMonth === "annual") return "26년 연간목표";
+    if (selectedMonth === "annual25") return "25년 연간실적";
     if (isTargetMonth(selectedMonth)) return plMonthTargetLabel(selectedMonth.m);
     if (isActualMonth(selectedMonth)) return plMonthActualLabel(selectedMonth.m);
+    if (isActual25Month(selectedMonth)) return `25.${String(selectedMonth.m).padStart(2, "0")}(실적)`;
     return "";
   }, [selectedMonth]);
 
@@ -2511,6 +2533,85 @@ export default function PLView({
   const rows = useMemo((): DealerPL[] => {
     const brandCogsMap = cogsRateMap[activeBrand] ?? {};
     const globalAvg = cogsRateMap["평균"]?.["평균"] ?? 0.441;
+
+    // ── 2025 실적 모드: retailYoy2025Map 기반, 목표 로직 동일 적용 ──
+    if (is2025Mode(selectedMonth)) {
+      const is25Annual = selectedMonth === "annual25";
+      const m25 = isActual25Month(selectedMonth) ? selectedMonth.m : null;
+      const brandStores = storeRetailMap[activeBrand] ?? {};
+      return Object.entries(brandStores)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .filter(([, st]) => {
+          const months = is25Annual ? MONTHS : [m25!];
+          return st.some((s) =>
+            months.some((mm) => (retailYoy2025Map?.[s.storeCode]?.[mm] ?? 0) > 0)
+          );
+        })
+        .map(([accountId, st]) => {
+          const retail = st.reduce((sum, s) => {
+            const v = is25Annual
+              ? MONTHS.reduce((ms, mm) => ms + (retailYoy2025Map?.[s.storeCode]?.[mm] ?? 0), 0)
+              : (retailYoy2025Map?.[s.storeCode]?.[m25!] ?? 0);
+            return sum + v;
+          }, 0);
+
+          const tag = st.reduce((sum, s) => {
+            const sr = is25Annual
+              ? MONTHS.reduce((ms, mm) => ms + (retailYoy2025Map?.[s.storeCode]?.[mm] ?? 0), 0)
+              : (retailYoy2025Map?.[s.storeCode]?.[m25!] ?? 0);
+            return sum + calcTag(sr, s.discountRate);
+          }, 0);
+
+          const cogsRate = brandCogsMap[accountId] ?? globalAvg;
+          const cogs = (tag * cogsRate) / PL_CALC.retailVatFactor;
+          const grossProfit = retail / PL_CALC.retailVatFactor - cogs;
+
+          let salary = 0, bonus = 0, headcount = 0, insurance = 0, rent = 0,
+              depr = 0, marketing = 0, packaging = 0, payFee = 0, othersLine = 0;
+          for (const s of st) {
+            const dc = storeDirectCostMap[s.storeCode];
+            if (!dc) continue;
+            headcount += dc.headcount;
+            if (is25Annual) {
+              for (const mm of MONTHS) {
+                const curYM = ym(mm, 2025);
+                const retailM = retailYoy2025Map?.[s.storeCode]?.[mm] ?? 0;
+                const salM = dc.avgSalary * dc.headcount;
+                const bonusM = retailM * dc.bonusRate;
+                const insM = (salM + bonusM) * dc.insuranceRate;
+                const deprM = calcDeprForMonth(dc.interiorCost, dc.openMonth, dc.amortEndMonth, dc.closedMonth, curYM);
+                const oc = calcOtherCostsMonth(retailM);
+                salary += salM; bonus += bonusM; insurance += insM;
+                rent += rentTotalMonth(retailM, dc); depr += deprM;
+                marketing += oc.marketing; packaging += oc.packaging;
+                payFee += oc.payFee; othersLine += oc.othersLine;
+              }
+            } else {
+              const curYM = ym(m25!, 2025);
+              const retailM = retailYoy2025Map?.[s.storeCode]?.[m25!] ?? 0;
+              const salM = dc.avgSalary * dc.headcount;
+              const bonusM = retailM * dc.bonusRate;
+              const oc = calcOtherCostsMonth(retailM);
+              salary += salM; bonus += bonusM;
+              insurance += (salM + bonusM) * dc.insuranceRate;
+              rent += rentTotalMonth(retailM, dc);
+              depr += calcDeprForMonth(dc.interiorCost, dc.openMonth, dc.amortEndMonth, dc.closedMonth, curYM);
+              marketing += oc.marketing; packaging += oc.packaging;
+              payFee += oc.payFee; othersLine += oc.othersLine;
+            }
+          }
+          const directCost = salary + bonus + insurance + rent + depr + marketing + packaging + payFee + othersLine;
+          return {
+            accountId,
+            accountNameKr: accountNameMap[accountId]?.account_nm_kr ?? "",
+            accountNameEn: accountNameMap[accountId]?.account_nm_en ?? "",
+            retail, tag, cogsRate, cogs, grossProfit,
+            salary, bonus, headcount, insurance, rent, depr,
+            marketing, packaging, payFee, othersLine, directCost,
+            operatingProfit: grossProfit - directCost,
+          };
+        });
+    }
 
     if (isActual) {
       // ── 실적 모드: Snowflake 기반 매장 배열만 사용 (CSV 금지) ──
@@ -2654,7 +2755,7 @@ export default function PLView({
           operatingProfit: grossProfit - directCost,
         };
       });
-  }, [storeRetailMap, actualStoreMap, isActual, activeBrand, selectedMonth, cogsRateMap, actualCogsRateMap, accountNameMap, storeDirectCostMap]);
+  }, [storeRetailMap, actualStoreMap, isActual, activeBrand, selectedMonth, cogsRateMap, actualCogsRateMap, accountNameMap, storeDirectCostMap, retailYoy2025Map]);
 
   const totals = useMemo(
     () => ({
@@ -2727,10 +2828,12 @@ export default function PLView({
           <select
             value={optionKey(selectedMonth)}
             onChange={(e) => setSelectedMonth(parseOptionKey(e.target.value))}
-            className={`rounded-lg border px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+            className={`rounded-lg border px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 ${
               isActual
-                ? "border-blue-300 bg-blue-50 font-bold text-blue-700"
-                : "border-slate-200 bg-white font-normal text-black"
+                ? "border-blue-300 bg-blue-50 font-bold text-blue-700 focus:ring-blue-300"
+                : is2025
+                  ? "border-purple-300 bg-purple-50 font-bold text-purple-700 focus:ring-purple-300"
+                  : "border-slate-200 bg-white font-normal text-black focus:ring-blue-300"
             }`}
           >
             {dropdownOptions.map((o) => (
@@ -2740,7 +2843,9 @@ export default function PLView({
                 style={
                   o.isActual
                     ? { color: "#1d4ed8", fontWeight: 700 }
-                    : { color: "#000000", fontWeight: 400 }
+                    : o.is2025
+                      ? { color: "#7e22ce", fontWeight: 700 }
+                      : { color: "#000000", fontWeight: 400 }
                 }
               >
                 {o.label}
@@ -2756,6 +2861,14 @@ export default function PLView({
             리테일(V+) = <code className="text-[10px] bg-blue-100 px-0.5 rounded">sale_amt</code> 집계 (할인율 역산 없음).{" "}
             직접비는 FR수익구조 등록 매장(<code className="text-[10px] bg-blue-100 px-0.5 rounded">shop_id</code>)만 반영 —
             미등록 매장은 직접비 0으로 비용률이 실제보다 낮게 표시될 수 있습니다.
+          </div>
+        )}
+        {is2025 && (
+          <div className="rounded-lg border border-purple-100 bg-purple-50/60 px-4 py-2.5 text-[11px] text-slate-600 leading-relaxed">
+            <span className="font-semibold text-purple-700">[2025 실적]</span>{" "}
+            리테일(V+) = retail_yoy_2025.json 매장별 실적 집계.{" "}
+            매출원가는 26년 목표와 동일하게 CSV 출고율(cogsRateMap) 적용.{" "}
+            직접비는 FR수익구조 등록 매장만 반영 — 미등록 매장은 직접비 0. 매장 모달은 제공되지 않습니다.
           </div>
         )}
 
@@ -2801,24 +2914,37 @@ export default function PLView({
                       actualStoreMap[row.accountId] ?? [],
                       (selectedMonth as { kind: "actual"; m: number }).m,
                     )
-                  : countActiveStoresForPeriod(
-                      storeRetailMap[activeBrand]?.[row.accountId] ?? [],
-                      selectedMonth,
-                    );
+                  : is2025
+                    ? (() => {
+                        const m25 = isActual25Month(selectedMonth) ? selectedMonth.m : null;
+                        const st = storeRetailMap[activeBrand]?.[row.accountId] ?? [];
+                        return st.filter((s) => {
+                          const v = m25 === null
+                            ? MONTHS.some((mm) => (retailYoy2025Map?.[s.storeCode]?.[mm] ?? 0) > 0)
+                            : (retailYoy2025Map?.[s.storeCode]?.[m25] ?? 0) > 0;
+                          return v;
+                        }).length;
+                      })()
+                    : countActiveStoresForPeriod(
+                        storeRetailMap[activeBrand]?.[row.accountId] ?? [],
+                        selectedMonth,
+                      );
                 return (
                   <tr
                     key={row.accountId}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setModalDealer(row)}
-                    onKeyDown={(e) => {
+                    role={is2025 ? undefined : "button"}
+                    tabIndex={is2025 ? undefined : 0}
+                    onClick={is2025 ? undefined : () => setModalDealer(row)}
+                    onKeyDown={is2025 ? undefined : (e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         setModalDealer(row);
                       }
                     }}
-                    className={`cursor-pointer transition-colors ${
-                      i % 2 === 0 ? "bg-white hover:bg-blue-50/60" : "bg-slate-50/50 hover:bg-blue-50/60"
+                    className={`transition-colors ${
+                      is2025
+                        ? i % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                        : `cursor-pointer ${i % 2 === 0 ? "bg-white hover:bg-blue-50/60" : "bg-slate-50/50 hover:bg-blue-50/60"}`
                     }`}
                   >
                     <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left whitespace-nowrap">

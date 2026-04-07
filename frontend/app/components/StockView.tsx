@@ -158,7 +158,7 @@ export function calcRetail(stock: StockData, inbound: InboundData): RetailData {
   return { year: stock.year, brands };
 }
 
-/** 예상 월용 전년 m월: POS(2025 탭과 동일) 우선, 없으면 역산 fallback */
+/** 예상 월용 전년 m월: POS 기준. POS 데이터 없으면 0 (역산 fallback 사용 안 함) */
 function priorYearSubMonthForEstimate(
   retail2025Pos: RetailData | null,
   brand: BrandKey,
@@ -166,14 +166,14 @@ function priorYearSubMonthForEstimate(
   대분류: string,
   중분류: string,
   m: number,
-  calcFallback: number
+  _calcFallback: number
 ): number {
-  if (!retail2025Pos) return calcFallback;
+  if (!retail2025Pos) return 0;
   const accPos = (retail2025Pos.brands[brand] ?? []).find((a) => a.account_id === accountId);
-  if (!accPos?.categories?.length) return calcFallback;
+  if (!accPos?.categories?.length) return 0;
   const cat = accPos.categories.find((c) => c.대분류 === 대분류);
   const sub = cat?.subcategories.find((s) => s.중분류 === 중분류);
-  if (!sub) return calcFallback;
+  if (!sub) return 0;
   return sub.months[m] ?? 0;
 }
 
@@ -182,25 +182,24 @@ function priorYearAccMonthForEstimate(
   brand: BrandKey,
   accountId: string,
   m: number,
-  calcFallback: number
+  _calcFallback: number
 ): number {
-  if (!retail2025Pos) return calcFallback;
+  if (!retail2025Pos) return 0;
   const accPos = (retail2025Pos.brands[brand] ?? []).find((a) => a.account_id === accountId);
-  if (!accPos) return calcFallback;
+  if (!accPos) return 0;
   const top = accPos.months[m];
   if (top !== undefined && top !== null) return top;
   const cats = accPos.categories ?? [];
   if (cats.length > 0) {
     return cats.reduce((s, cat) => s + (cat.months[m] ?? 0), 0);
   }
-  return calcFallback;
+  return 0;
 }
 
 // ─── 2026 예상매출 혼합 ───────────────────────
-/** `retail2025Pos`: 2025 리테일매출(POS). 있으면 미완료 월만 POS×성장률, 없으면 역산×성장률(기존). */
+/** POS 기준 대리상만 포함. POS 데이터 없으면 빈 배열. */
 export function blendRetail(
   actual2026: RetailData,
-  retail2025calc: RetailData,
   growthRates: Record<BrandKey, number>,
   retail2025Pos: RetailData | null = null
 ): { data: RetailData; estimatedMonths: number[] } {
@@ -217,7 +216,8 @@ export function blendRetail(
 
   for (const brand of BRAND_ORDER as BrandKey[]) {
     const rate = (growthRates[brand] ?? 100) / 100;
-    const accs25 = retail2025calc.brands[brand] ?? [];
+    // POS 기준 대리상만 사용 — POS 없으면 빈 배열 (역산 fallback 없음)
+    const accs25 = retail2025Pos?.brands[brand] ?? [];
     const accs26 = actual2026.brands[brand] ?? [];
     const acc26Map = Object.fromEntries(accs26.map((a) => [a.account_id, a]));
 
@@ -524,31 +524,24 @@ export default function StockView({
       ? inbound2025
       : inbound2026;
 
-  // 2025: calcRetail 계산값 (memoized — 의존성이 바뀔 때만 재계산)
-  const retail2025calc = useMemo(
-    () => (data2025 && inbound2025 ? calcRetail(data2025, inbound2025) : null),
-    [data2025, inbound2025]
-  );
-
   // 2026: actual + estimated 혼합
   const blended = useMemo(
     () =>
-      activeYear === "2026" && retail2026 && retail2025calc
-        ? blendRetail(retail2026, retail2025calc, growthRates, retailDw2025)
+      activeYear === "2026" && retail2026
+        ? blendRetail(retail2026, growthRates, retailDw2025)
         : null,
-    [activeYear, retail2026, retail2025calc, growthRates, retailDw2025]
+    [activeYear, retail2026, growthRates, retailDw2025]
   );
 
   const currentRetail: RetailData | null =
     activeYear === "2025"
-      ? retail2025calc
+      ? retailDw2025
       : blended?.data ?? retail2026;
 
-  /** 2025 탭: 대리상 표 판매 = retail_dw_2025(POS), 없으면 역산(calcRetail) 폴백 */
+  /** 2025 탭: 대리상 표 판매 = retail_dw_2025(POS) */
   const retailForDealerTable = useMemo(() => {
-    if (activeYear === "2025" && retailDw2025) return retailDw2025;
     return currentRetail;
-  }, [activeYear, retailDw2025, currentRetail]);
+  }, [currentRetail]);
 
   const estimatedMonths = blended?.estimatedMonths ?? [];
 
@@ -601,13 +594,13 @@ export default function StockView({
           stock={currentStock}
           stockPrev={data2025}
           retail={retailForDealerTable}
-          retailPrev={retail2025calc}
+          retailPrev={retailDw2025}
           inbound={currentInbound}
           inboundPrev={inbound2025}
           appOtb={appOtb2026}
           year={activeYear}
           stock2025={data2025}
-          retail2025={retail2025calc}
+          retail2025={retailDw2025}
           inbound2025={inbound2025}
           stock2026={data2026}
           retail2026={blended?.data ?? retail2026}
@@ -635,20 +628,6 @@ export default function StockView({
         <hr className="my-6 border-0 border-t-2 border-slate-200" />
         {activeYear === "2025" ? (
           <>
-            <RetailSectionHeader
-              title="리테일매출(역산)"
-              unit="천위안"
-              range="2025년 1월 ~ 12월"
-              mode="inverse"
-            />
-            {currentRetail ? (
-              <RetailTable data={currentRetail} estimatedMonths={[]} brand={selectedBrand} />
-            ) : (
-              <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400">
-                2025년 리테일매출(역산) 계산 불가 — 재고잔액 및 입고물량 데이터가 모두 필요합니다
-              </div>
-            )}
-            <hr className="my-6 border-0 border-t-2 border-slate-200" />
             <RetailSectionHeader
               title="리테일매출(POS)"
               unit="천위안"

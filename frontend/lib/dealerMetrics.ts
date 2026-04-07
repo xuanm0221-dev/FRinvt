@@ -27,8 +27,8 @@ export interface SellThroughRates {
 export const DEFAULT_SELL_THROUGH_RATES: SellThroughRates = {
   bySeason: { "27S": 10, "26F": 50, "26S": 70, "27F": 0 },
   currentDefault: 70,
-  yearGroup: { "1년차": 70, "2년차": 85 },
-  oldSeason: 100,
+  yearGroup: { "1년차": 60, "2년차": 70 },
+  oldSeason: 80,
 };
 
 function sellThroughPctForSeason(season: string, rates: SellThroughRates): number {
