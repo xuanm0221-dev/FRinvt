@@ -142,6 +142,52 @@ function ovwCalcAnnualOpProfit(
   return grossProfit - directCost;
 }
 
+/**
+ * PL "26년 연간TGT"와 동일: TGT 시뮬 리테일 + CSV 대리상 가중 할인율 + CSV 출고율 + CSV 직접비(12개월)
+ */
+function ovwCalcTgtOpProfit(
+  tgtRetail: number,
+  st: StoreRetailRow[],
+  cogsRate: number,
+  dcMap: StoreDirectCostMap,
+): number {
+  const annualRetailCsv = st.reduce(
+    (sum, s) => sum + MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0),
+    0,
+  );
+  const annualTagCsv = st.reduce((sum, s) => {
+    const sr = MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0);
+    return sum + ovwCalcTag(sr, s.discountRate);
+  }, 0);
+  const tag = annualRetailCsv > 0 ? tgtRetail * (annualTagCsv / annualRetailCsv) : tgtRetail;
+
+  const cogs = (tag * cogsRate) / OVW_PL.vatFactor;
+  const grossProfit = tgtRetail / OVW_PL.vatFactor - cogs;
+
+  let salary = 0, bonus = 0, insurance = 0, rent = 0, depr = 0,
+      marketing = 0, packaging = 0, payFee = 0, othersLine = 0;
+
+  for (const s of st) {
+    const dc = dcMap[s.storeCode];
+    if (!dc) continue;
+    for (const mm of MONTHS) {
+      const retailM = s.months[mm] ?? 0;
+      const curYM = 2026 * 100 + mm;
+      const salM = dc.avgSalary * dc.headcount;
+      const bonusM = retailM * dc.bonusRate;
+      const insM = (salM + bonusM) * dc.insuranceRate;
+      const deprM = ovwDepr(dc.interiorCost, dc.openMonth, dc.amortEndMonth, dc.closedMonth, curYM);
+      const oc = ovwOtherCosts(retailM);
+      salary += salM; bonus += bonusM; insurance += insM;
+      rent += ovwRentTotal(retailM, dc); depr += deprM;
+      marketing += oc.marketing; packaging += oc.packaging;
+      payFee += oc.payFee; othersLine += oc.othersLine;
+    }
+  }
+  const directCost = salary + bonus + insurance + rent + depr + marketing + packaging + payFee + othersLine;
+  return grossProfit - directCost;
+}
+
 // ── BO.목표 Tag 매출 계산 (StockSimuView.annualPlTag와 동일) ─────────
 function annualPlTag(
   storeRetailMap: StoreRetailMap,
@@ -248,7 +294,7 @@ export default function OverviewScenario1Table({
     });
   };
 
-  const { metrics, totalRow, metrics2025Map, totalRow2025, opProfit2026Map, opProfit2025Map, boSalesMap, prevSalesMap, boEndingMap, boBaseMap } = useMemo(() => {
+  const { metrics, totalRow, metrics2025Map, totalRow2025, opProfit2026Map, opProfit2025Map, opProfitTgt2026Map, boSalesMap, prevSalesMap, boEndingMap, boBaseMap } = useMemo(() => {
     const blended =
       retail2026
         ? blendRetail(retail2026, growthRates, retailDw2025)
@@ -360,11 +406,28 @@ export default function OverviewScenario1Table({
       }
     }
 
+    const opProfitTgt2026Map = new Map<string, number>();
+    if (storeRetailMap && storeDirectCostMap && cogsRateMap) {
+      const brandStoresTgt = storeRetailMap[brand] ?? {};
+      const brandCogsMapTgt = cogsRateMap[brand] ?? {};
+      const globalAvgTgt = cogsRateMap["평균"]?.["평균"] ?? 0.441;
+      for (const m of filtered) {
+        const st = brandStoresTgt[m.account_id] ?? [];
+        const cogsRate = brandCogsMapTgt[m.account_id] ?? globalAvgTgt;
+        const tgtRetail = m.apparel.sales + m.acc.sales;
+        opProfitTgt2026Map.set(
+          m.account_id,
+          ovwCalcTgtOpProfit(tgtRetail, st, cogsRate, storeDirectCostMap),
+        );
+      }
+    }
+
     // ── 2026 totalRow ─────────────────────────────────
     let totalRow: {
       apparel: { sellThrough: number | null; salesYoyPos: number | null; ending: number };
       acc: { weeks: number | null; salesYoyPos: number | null; ending: number };
       opProfit: number;
+      opProfitTgt: number;
       tgtSales: number;
       boSales: number;
       salesYoyTotal: number | null;
@@ -388,6 +451,10 @@ export default function OverviewScenario1Table({
 
       const totalOpProfit2026 = filtered.reduce(
         (s, m) => s + (opProfit2026Map.get(m.account_id) ?? 0), 0
+      );
+
+      const totalOpProfitTgt2026 = filtered.reduce(
+        (s, m) => s + (opProfitTgt2026Map.get(m.account_id) ?? 0), 0
       );
 
       // ── TGT 당년매출 합계 (의류+ACC sales 합산) ────────────────────
@@ -416,6 +483,7 @@ export default function OverviewScenario1Table({
           ending: accEnding,
         },
         opProfit: totalOpProfit2026,
+        opProfitTgt: totalOpProfitTgt2026,
         tgtSales: tgtTotalSales,
         boSales: boTotalSales,
         salesYoyTotal: totalSalesYoyTotal,
@@ -492,7 +560,7 @@ export default function OverviewScenario1Table({
       };
     }
 
-    return { metrics: filtered, totalRow, metrics2025Map, totalRow2025, opProfit2026Map, opProfit2025Map, boSalesMap, prevSalesMap, boEndingMap, boBaseMap };
+    return { metrics: filtered, totalRow, metrics2025Map, totalRow2025, opProfit2026Map, opProfit2025Map, opProfitTgt2026Map, boSalesMap, prevSalesMap, boEndingMap, boBaseMap };
   }, [
     brand,
     data2025,
@@ -566,6 +634,10 @@ export default function OverviewScenario1Table({
   const totalOpProfitDiff =
     totalRow && totalRow2025
       ? totalRow.opProfit - totalRow2025.opProfit
+      : null;
+  const totalOpProfitTgtDiff =
+    totalRow && totalRow2025
+      ? totalRow.opProfitTgt - totalRow2025.opProfit
       : null;
 
   return (
@@ -701,10 +773,15 @@ export default function OverviewScenario1Table({
                     : null} />
                 </td>
                 <td className={td}><Yoy v={totalEndingYoy} /></td>
-                {/* TGT 영업이익: 빈칸 */}
-                <td className={`${td} border-l border-l-slate-300 text-slate-300`}>-</td>
-                <td className={`${td} text-slate-300`}>-</td>
-                <td className={`${td} text-slate-300`}>-</td>
+                <td className={`${td} border-l border-l-slate-300 ${totalRow.opProfitTgt >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  <Num v={totalRow.opProfitTgt} />
+                </td>
+                <td className={td}><DiffAmt v={totalOpProfitTgtDiff} /></td>
+                <td className={td}>
+                  <Yoy v={totalRow2025 && totalRow2025.opProfit !== 0
+                    ? (totalRow.opProfitTgt / totalRow2025.opProfit) * 100
+                    : null} />
+                </td>
                 {/* BO.목표: 당년매출 / 매출성장율 / 기말재고(당년/전년비) / 영업이익(당년/전년비/전년비%) */}
                 <td className={`${td} border-l-2 border-l-slate-400`}><Num v={totalRow.boSales} /></td>
                 <td className={td}>
@@ -751,6 +828,13 @@ export default function OverviewScenario1Table({
                 ? (op2026 / op2025) * 100
                 : null;
 
+              const opTgtV = opProfitTgt2026Map.get(m.account_id);
+              const opTgt2026 = opTgtV !== undefined ? opTgtV : null;
+              const opTgtDiff = opTgt2026 !== null && op2025 !== null ? opTgt2026 - op2025 : null;
+              const opTgtYoy = opTgt2026 !== null && op2025 !== null && op2025 !== 0
+                ? (opTgt2026 / op2025) * 100
+                : null;
+
               return (
                 <tr key={m.account_id} className="hover:bg-slate-50/50">
                   <td className={tdLabel}>
@@ -795,10 +879,11 @@ export default function OverviewScenario1Table({
                   <td className={`${td} border-l border-l-slate-200`}><Num v={curr26Ending} /></td>
                   <td className={td}><DiffAmt v={prev25Ending > 0 ? curr26Ending - prev25Ending : null} /></td>
                   <td className={td}><Yoy v={endingYoy} /></td>
-                  {/* TGT 영업이익: 빈칸 */}
-                  <td className={`${td} border-l border-l-slate-200 text-slate-300`}>-</td>
-                  <td className={`${td} text-slate-300`}>-</td>
-                  <td className={`${td} text-slate-300`}>-</td>
+                  <td className={`${td} border-l border-l-slate-200 ${opTgt2026 !== null && opTgt2026 >= 0 ? "text-green-600" : opTgt2026 !== null ? "text-red-500" : ""}`}>
+                    {opTgt2026 !== null ? <Num v={opTgt2026} /> : ""}
+                  </td>
+                  <td className={td}><DiffAmt v={opTgtDiff} /></td>
+                  <td className={td}><Yoy v={opTgtYoy} /></td>
                   {/* BO.목표: 당년매출 / 매출성장율 / 기말재고 / 영업이익 */}
                   <td className={`${td} border-l-2 border-l-slate-300`}><Num v={boSalesMap.get(m.account_id) ?? 0} /></td>
                   <td className={td}>

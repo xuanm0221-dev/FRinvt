@@ -24,13 +24,16 @@ interface Props {
   storeDirectCostMap?: StoreDirectCostMap;
   retailYoy2025Map?: Record<string, Record<number, number>> | null;
   retailStore2026?: RetailStoreData | null;
+  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 리테일: brand → accountId → apparel.sales+acc.sales */
+  tgtRetailMap?: Record<string, Record<string, number>>;
   selectedBrand?: BrandKey;
   onSelectedBrandChange?: (b: BrandKey) => void;
 }
 
-/** 월 선택 모드: annual=26년연간목표, annual25=25년연간실적, target=26월별목표, actual=26월별실적, actual25=25월별실적 */
+/** 월 선택 모드: annual=26년연간목표, annualTgt=26년연간TGT(시뮬레이션), annual25=25년연간실적, target=26월별목표, actual=26월별실적, actual25=25월별실적 */
 type MonthOption =
   | "annual"
+  | "annualTgt"
   | "annual25"
   | { kind: "target";   m: number }
   | { kind: "actual";   m: number }
@@ -48,7 +51,7 @@ function is2025Mode(opt: MonthOption): boolean {
   return opt === "annual25" || isActual25Month(opt);
 }
 function monthNum(opt: MonthOption): number | null {
-  if (opt === "annual" || opt === "annual25") return null;
+  if (opt === "annual" || opt === "annualTgt" || opt === "annual25") return null;
   return opt.m;
 }
 type PLTableVariant = "dealer" | "store";
@@ -106,7 +109,7 @@ function avgLaborPerHeadForDisplay(
 ): number {
   if (headcount <= 0) return 0;
   let v = (salary + bonus) / headcount;
-  if (selectedMonth === "annual" || selectedMonth === "annual25") v /= PL_CALC.annualMonthsForAvgLabor;
+  if (selectedMonth === "annual" || selectedMonth === "annualTgt" || selectedMonth === "annual25") v /= PL_CALC.annualMonthsForAvgLabor;
   return v;
 }
 
@@ -281,12 +284,14 @@ function plActualMonthCogsRateLabel(month: number): string {
 /** MonthOption → 직렬화 키 (select value용) */
 function optionKey(opt: MonthOption): string {
   if (opt === "annual") return "annual";
+  if (opt === "annualTgt") return "annualTgt";
   if (opt === "annual25") return "annual25";
   return `${opt.kind}-${opt.m}`;
 }
 /** 직렬화 키 → MonthOption */
 function parseOptionKey(key: string): MonthOption {
   if (key === "annual") return "annual";
+  if (key === "annualTgt") return "annualTgt";
   if (key === "annual25") return "annual25";
   const [kind, m] = key.split("-");
   return { kind: kind as "target" | "actual" | "actual25", m: Number(m) };
@@ -312,6 +317,7 @@ type DropdownOption = { value: MonthOption; label: string; isActual?: boolean; i
 function buildDropdownOptions(actualMonths: number): DropdownOption[] {
   return [
     { value: "annual" as MonthOption, label: "26년 연간목표" },
+    { value: "annualTgt" as MonthOption, label: "26년 연간TGT" },
     ...MONTHS.map((m) => ({ value: { kind: "target" as const, m }, label: plMonthTargetLabel(m) })),
     ...Array.from({ length: actualMonths }, (_, i) => ({
       value: { kind: "actual" as const, m: i + 1 },
@@ -382,7 +388,7 @@ function buildPlKpiLegendItems(ctx: PlKpiLegendCtx): ReactNode[] {
   const v = PL_CALC.retailVatFactor;
   const r = PL_CALC.rentFixedDivisor;
   const isActual = isActualMonth(ctx.selectedMonth);
-  const bonusScope = ctx.selectedMonth === "annual" ? "월별 동일 합산" : "해당 월";
+  const bonusScope = (ctx.selectedMonth === "annual" || ctx.selectedMonth === "annualTgt") ? "월별 동일 합산" : "해당 월";
 
   return [
     <li key="tag">
@@ -1627,9 +1633,9 @@ function PlModalGroupKpiTable({
             <th className="px-1 py-2 text-right">직접비%</th>
             <th className="px-1 py-2 text-right">점당영업이익</th>
             <th className="px-1 py-2 text-right">영업%</th>
-            {selectedMonth === "annual" && <th className="px-1 py-2 text-right">매장수</th>}
+            {(selectedMonth === "annual" || selectedMonth === "annualTgt") && <th className="px-1 py-2 text-right">매장수</th>}
             <th className="px-1 py-2 text-right">
-              {selectedMonth === "annual" ? "매장수(계산용)" : "매장수"}
+              {(selectedMonth === "annual" || selectedMonth === "annualTgt") ? "매장수(계산용)" : "매장수"}
             </th>
           </tr>
         </thead>
@@ -1660,7 +1666,7 @@ function PlModalGroupKpiTable({
               >
                 {fmtPerPointVatRate(g.perOperatingProfit, g.perRetail)}
               </td>
-              {selectedMonth === "annual" && (
+              {(selectedMonth === "annual" || selectedMonth === "annualTgt") && (
                 <td className="py-1 text-right text-slate-500 tabular-nums">{Math.round(g.count / 12)}개</td>
               )}
               <td className="py-1 text-right text-slate-400">{g.count}개</td>
@@ -2116,6 +2122,8 @@ function StoreModal({
   const monthLabel =
     selectedMonth === "annual"
       ? "26년 연간목표"
+      : selectedMonth === "annualTgt"
+      ? "26년 연간TGT"
       : isTargetMonth(selectedMonth)
       ? plMonthTargetLabel(selectedMonth.m)
       : isActualMonth(selectedMonth)
@@ -2149,7 +2157,7 @@ function StoreModal({
       : "";
 
   const retail2025 = selectedRow && retail2025Map
-    ? selectedMonth === "annual"
+    ? (selectedMonth === "annual" || selectedMonth === "annualTgt")
       ? MONTHS.reduce((s, m) => s + (retail2025Map[selectedRow.storeCode]?.[m] ?? 0), 0)
       : (retail2025Map[selectedRow.storeCode]?.[monthNum(selectedMonth) as number] ?? 0)
     : 0;
@@ -2479,6 +2487,7 @@ export default function PLView({
   storeDirectCostMap = {},
   retailYoy2025Map = null,
   retailStore2026 = null,
+  tgtRetailMap = {},
   selectedBrand: selectedBrandProp,
   onSelectedBrandChange,
 }: Props) {
@@ -2510,6 +2519,7 @@ export default function PLView({
 
   const plMonthLabel = useMemo(() => {
     if (selectedMonth === "annual") return "26년 연간목표";
+    if (selectedMonth === "annualTgt") return "26년 연간TGT";
     if (selectedMonth === "annual25") return "25년 연간실적";
     if (isTargetMonth(selectedMonth)) return plMonthTargetLabel(selectedMonth.m);
     if (isActualMonth(selectedMonth)) return plMonthActualLabel(selectedMonth.m);
@@ -2685,6 +2695,64 @@ export default function PLView({
         });
     }
 
+    // ── 연간TGT 모드: 재고자산(TGT) 시뮬레이션 리테일 + 연간목표 기준 할인율/원가율 + CSV 직접비 ──
+    if (selectedMonth === "annualTgt") {
+      const brandStoresTgt = storeRetailMap[activeBrand] ?? {};
+      const tgtBrandMap = tgtRetailMap[activeBrand] ?? {};
+      return Object.entries(brandStoresTgt)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .filter(([accountId]) => (tgtBrandMap[accountId] ?? 0) > 0)
+        .map(([accountId, st]) => {
+          const retail = tgtBrandMap[accountId] ?? 0;
+
+          // 대리상 단위 가중평균 할인율: "26년 연간목표" CSV 기준 tag/retail 비율 적용
+          const annualRetail = st.reduce(
+            (sum, s) => sum + MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0), 0,
+          );
+          const annualTag = st.reduce((sum, s) => {
+            const sr = MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0);
+            return sum + calcTag(sr, s.discountRate);
+          }, 0);
+          const tag = annualRetail > 0 ? retail * (annualTag / annualRetail) : retail;
+
+          const cogsRate = brandCogsMap[accountId] ?? globalAvg;
+          const cogs = (tag * cogsRate) / PL_CALC.retailVatFactor;
+          const grossProfit = retail / PL_CALC.retailVatFactor - cogs;
+
+          // 직접비: "26년 연간목표"와 동일 — CSV 월별 리테일 기준 12개월 합산
+          let salary = 0, bonus = 0, headcount = 0, insurance = 0, rent = 0,
+              depr = 0, marketing = 0, packaging = 0, payFee = 0, othersLine = 0;
+          for (const s of st) {
+            const dc = storeDirectCostMap[s.storeCode];
+            if (!dc) continue;
+            headcount += dc.headcount;
+            for (const mm of MONTHS) {
+              const curYM = ym(mm);
+              const retailM = s.months[mm] ?? 0;
+              const salM = dc.avgSalary * dc.headcount;
+              const bonusM = retailM * dc.bonusRate;
+              const insM = (salM + bonusM) * dc.insuranceRate;
+              const deprM = calcDeprForMonth(dc.interiorCost, dc.openMonth, dc.amortEndMonth, dc.closedMonth, curYM);
+              const oc = calcOtherCostsMonth(retailM);
+              salary += salM; bonus += bonusM; insurance += insM;
+              rent += rentTotalMonth(retailM, dc); depr += deprM;
+              marketing += oc.marketing; packaging += oc.packaging;
+              payFee += oc.payFee; othersLine += oc.othersLine;
+            }
+          }
+          const directCost = salary + bonus + insurance + rent + depr + marketing + packaging + payFee + othersLine;
+          return {
+            accountId,
+            accountNameKr: accountNameMap[accountId]?.account_nm_kr ?? "",
+            accountNameEn: accountNameMap[accountId]?.account_nm_en ?? "",
+            retail, tag, cogsRate, cogs, grossProfit,
+            salary, bonus, headcount, insurance, rent, depr,
+            marketing, packaging, payFee, othersLine, directCost,
+            operatingProfit: grossProfit - directCost,
+          };
+        });
+    }
+
     // ── 목표 모드: 기존 CSV 기반 로직 ──
     const brandStores = storeRetailMap[activeBrand] ?? {};
     return Object.entries(brandStores)
@@ -2761,7 +2829,7 @@ export default function PLView({
           operatingProfit: grossProfit - directCost,
         };
       });
-  }, [storeRetailMap, actualStoreMap, isActual, activeBrand, selectedMonth, cogsRateMap, actualCogsRateMap, accountNameMap, storeDirectCostMap, retailYoy2025Map]);
+  }, [storeRetailMap, actualStoreMap, isActual, activeBrand, selectedMonth, cogsRateMap, actualCogsRateMap, accountNameMap, storeDirectCostMap, retailYoy2025Map, tgtRetailMap]);
 
   const totals = useMemo(
     () => ({

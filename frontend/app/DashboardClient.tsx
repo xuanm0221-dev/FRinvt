@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { BrandKey, BRAND_ORDER, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
-import StockView, { type AccountNameMap, DEFAULT_GROWTH } from "./components/StockView";
+import StockView, { type AccountNameMap, DEFAULT_GROWTH, blendRetail } from "./components/StockView";
 import OverviewScenario1Table from "./components/OverviewScenario1Table";
 import StockSimuView from "./components/StockSimuView";
 import PLView from "./components/PLView";
 import { TableIcon, ChartBarIcon, LayoutDashboardIcon, Square2StackIcon } from "./components/Icons";
-import { DEFAULT_TARGET_WEEKS, DEFAULT_SELL_THROUGH_RATES, type SellThroughRates } from "../lib/dealerMetrics";
+import { DEFAULT_TARGET_WEEKS, DEFAULT_SELL_THROUGH_RATES, type SellThroughRates, mergeAccounts, computeAccountMetrics } from "../lib/dealerMetrics";
 
 interface Props {
   data2025: StockData | null;
@@ -73,6 +73,28 @@ export default function DashboardClient({
       .then(setGrowthRates)
       .catch(() => {});
   }, []);
+
+  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 리테일 = apparel.sales + acc.sales */
+  const tgtRetailMap = useMemo((): Record<string, Record<string, number>> => {
+    if (!data2026) return {};
+    const blended = retail2026 ? blendRetail(retail2026, growthRates, retailDw2025) : null;
+    const retailForCalc = blended?.data ?? retail2026;
+    const result: Record<string, Record<string, number>> = {};
+    for (const brand of BRAND_ORDER) {
+      const merged = mergeAccounts(brand, data2026, retailForCalc, inbound2026, appOtb2026);
+      const map: Record<string, number> = {};
+      for (const acc of merged) {
+        const m = computeAccountMetrics(
+          acc, brand, data2026, data2025, retailForCalc, retailDw2025,
+          inbound2026, inbound2025, appOtb2026, "2026",
+          targetWeeks, sellThroughRates, retailDw2025,
+        );
+        map[acc.account_id] = m.apparel.sales + m.acc.sales;
+      }
+      result[brand] = map;
+    }
+    return result;
+  }, [data2025, data2026, retail2026, retailDw2025, inbound2025, inbound2026, appOtb2026, growthRates, targetWeeks, sellThroughRates]);
 
   return (
     <div>
@@ -189,6 +211,7 @@ export default function DashboardClient({
             retailYoy2025Map={retailYoy2025Map}
             retailStore2026={retailStore2026}
             actualCogsRateMap={actualCogsRateMap}
+            tgtRetailMap={tgtRetailMap}
             selectedBrand={selectedBrand}
             onSelectedBrandChange={setSelectedBrand}
           />
