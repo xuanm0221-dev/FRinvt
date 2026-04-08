@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BrandKey, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
+import { BrandKey, BRAND_ORDER, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
 import StockView, { type AccountNameMap, DEFAULT_GROWTH } from "./components/StockView";
 import OverviewScenario1Table from "./components/OverviewScenario1Table";
 import StockSimuView from "./components/StockSimuView";
@@ -30,8 +30,8 @@ interface Props {
 
 const TABS = [
   { id: "overview", label: "종합분석", Icon: LayoutDashboardIcon },
-  { id: "stock", label: "재고자산(목표)", Icon: TableIcon },
-  { id: "stockSimu", label: "재고자산(PL기준)", Icon: Square2StackIcon },
+  { id: "stock", label: "재고자산(TGT)", Icon: TableIcon },
+  { id: "stockSimu", label: "재고자산(BO.목표)", Icon: Square2StackIcon },
   { id: "pl", label: "PL", Icon: ChartBarIcon },
 ] as const;
 
@@ -99,35 +99,47 @@ export default function DashboardClient({
               </button>
             ))}
           </div>
+
+          {/* 글로벌 브랜드 선택 */}
+          <div className="ml-4 flex gap-1 rounded-xl bg-slate-100/90 p-1">
+            {BRAND_ORDER.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setSelectedBrand(b)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  selectedBrand === b
+                    ? "bg-white text-[#2f5f93] shadow-sm"
+                    : "text-slate-600 hover:bg-white/70"
+                }`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         {activeTab === "overview" && (
-          <div className="flex flex-wrap items-start gap-8">
-            <OverviewScenario1Table
-              data2025={data2025}
-              data2026={data2026}
-              inbound2025={inbound2025}
-              inbound2026={inbound2026}
-              retail2026={retail2026}
-              retailDw2025={retailDw2025}
-              appOtb2026={appOtb2026}
-              accountNameMap={accountNameMap}
-              brand={selectedBrand}
-              onBrandChange={setSelectedBrand}
-              growthRates={growthRates}
-              targetWeeks={targetWeeks}
-              sellThroughRates={sellThroughRates}
-              storeRetailMap={storeRetailMap}
-              storeDirectCostMap={storeDirectCostMap}
-              cogsRateMap={cogsRateMap}
-              retailYoy2025Map={retailYoy2025Map}
-            />
-            <div className="min-h-[100px] flex-1 rounded-xl border border-dashed border-slate-200 bg-slate-50/40 p-4 text-center text-xs text-slate-400">
-              시나리오 2·3 영역 (추후)
-            </div>
-          </div>
+          <OverviewScenario1Table
+            data2025={data2025}
+            data2026={data2026}
+            inbound2025={inbound2025}
+            inbound2026={inbound2026}
+            retail2026={retail2026}
+            retailDw2025={retailDw2025}
+            appOtb2026={appOtb2026}
+            accountNameMap={accountNameMap}
+            brand={selectedBrand}
+            growthRates={growthRates}
+            targetWeeks={targetWeeks}
+            sellThroughRates={sellThroughRates}
+            storeRetailMap={storeRetailMap}
+            storeDirectCostMap={storeDirectCostMap}
+            cogsRateMap={cogsRateMap}
+            retailYoy2025Map={retailYoy2025Map}
+          />
         )}
         {activeTab === "stockSimu" && (
           <StockSimuView
@@ -143,6 +155,7 @@ export default function DashboardClient({
             targetWeeks={targetWeeks}
             sellThroughRates={sellThroughRates}
             retailDw2025={retailDw2025}
+            selectedBrand={selectedBrand}
           />
         )}
         {activeTab === "stock" && (
@@ -176,6 +189,8 @@ export default function DashboardClient({
             retailYoy2025Map={retailYoy2025Map}
             retailStore2026={retailStore2026}
             actualCogsRateMap={actualCogsRateMap}
+            selectedBrand={selectedBrand}
+            onSelectedBrandChange={setSelectedBrand}
           />
         )}
       </div>

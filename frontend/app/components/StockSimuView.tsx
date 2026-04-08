@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   BrandKey,
-  BRAND_ORDER,
   StockData,
   InboundData,
   RetailData,
@@ -34,6 +33,7 @@ interface Props {
   targetWeeks: Record<string, number>;
   sellThroughRates: SellThroughRates;
   retailDw2025: RetailData | null;
+  selectedBrand?: BrandKey;
 }
 
 interface SimuRow {
@@ -99,8 +99,9 @@ export default function StockSimuView({
   targetWeeks,
   sellThroughRates,
   retailDw2025,
+  selectedBrand: selectedBrandProp,
 }: Props) {
-  const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
+  const selectedBrand: BrandKey = selectedBrandProp ?? "MLB";
   const [purchaseExpanded, setPurchaseExpanded] = useState(false);
 
   // 2026 블렌드 리테일 (매입 계산용)
@@ -249,28 +250,8 @@ export default function StockSimuView({
 
   return (
     <div>
-      {/* 브랜드 탭 */}
-      <div className="sticky top-[65px] z-30 mb-5 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur">
-        {BRAND_ORDER.map((b) => (
-          <button
-            key={b}
-            onClick={() => setSelectedBrand(b)}
-            className={`-mb-px rounded-t-xl border border-b-0 px-5 py-2 text-sm font-semibold tracking-[0.01em] transition-all duration-200 ${
-              selectedBrand === b
-                ? "border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] text-[#2f5f93] shadow-[0_-1px_0_rgba(255,255,255,0.9),0_10px_24px_rgba(53,92,138,0.10)]"
-                : "border-transparent bg-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white/70 hover:text-slate-700"
-            }`}
-          >
-            {b}
-          </button>
-        ))}
-      </div>
 
-      {/* 좌우 flex 배치 — 두 표를 물리적으로 분리 */}
-      <div className="flex items-start gap-0">
-
-        {/* ── 좌측 표: 재고자산(PL기준) ── */}
-        <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-3 text-sm font-semibold tracking-[-0.02em] text-slate-700">
               <span>재고자산 시뮬레이션</span>
@@ -319,7 +300,7 @@ export default function StockSimuView({
                       <th className="px-3 py-2.5">매입YOY</th>
                     </>
                   )}
-                  <th className="border-l border-white/30 px-3 py-2.5">판매(PL)</th>
+                  <th className="border-l border-white/30 px-3 py-2.5">판매(BO.목표)</th>
                   <th className="px-3 py-2.5">판매YOY</th>
                   <th className="border-l border-white/30 px-3 py-2.5">기말재고</th>
                   <th className="px-3 py-2.5">YOY</th>
@@ -452,51 +433,6 @@ export default function StockSimuView({
             </table>
           </div>
         </div>
-
-        {/* ── 두 표 사이 흰 공백 ── */}
-        <div className="w-6 shrink-0" />
-
-        {/* ── 우측 표: 목표 컬럼 ── */}
-        <div className="shrink-0">
-          {/* 헤더 높이 맞추기용 빈 라벨 영역 (좌측 h2 영역과 동일 높이) */}
-          <div className="mb-3 h-[28px]" />
-          <div className="rounded-xl border border-slate-200 shadow-sm">
-            <table className="border-collapse text-right text-sm">
-              <thead>
-                <tr className="border-b border-[#1e3a5f]/20 bg-[linear-gradient(180deg,#2d5a8e_0%,#245089_100%)] text-xs font-semibold text-white">
-                  <th className="px-3 py-2.5">판매(목표)</th>
-                  <th className="border-l border-white/30 px-3 py-2.5">기말재고(목표)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* 합계 행 */}
-                <tr className="border-b-2 border-slate-300 bg-slate-100/60 font-semibold">
-                  <td className="px-3 py-2.5 tabular-nums text-slate-800">
-                    {fmtCell(totals.targetSales)}
-                  </td>
-                  <td className="border-l border-slate-200 px-3 py-2.5 tabular-nums text-slate-800">
-                    {fmtCell(totals.targetEnding)}
-                  </td>
-                </tr>
-                {rows.filter((r) => r.base + r.apparelPurchase + r.accPurchase + r.plSales > 10).map((r) => (
-                  <tr
-                    key={r.accountId}
-                    className="border-b border-slate-100"
-                  >
-                    <td className="px-3 py-2 tabular-nums text-slate-700">
-                      {fmtCell(r.targetSales)}
-                    </td>
-                    <td className="border-l border-slate-100 px-3 py-2 tabular-nums text-slate-700">
-                      {fmtCell(r.targetEnding)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
     </div>
   );
 }

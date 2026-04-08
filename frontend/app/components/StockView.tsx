@@ -551,23 +551,8 @@ export default function StockView({
 
   return (
     <div>
-      {/* 연도 + 브랜드 탭 (한 행) */}
+      {/* 연도 탭 */}
       <div className="sticky top-[65px] z-30 mb-5 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur">
-        {/* 브랜드 — 기존 카드 스타일 유지 */}
-        {BRAND_ORDER.map((b) => (
-          <button
-            key={b}
-            onClick={() => setSelectedBrand(b)}
-            className={`-mb-px rounded-t-xl border border-b-0 px-5 py-2 text-sm font-semibold tracking-[0.01em] transition-all duration-200 ${
-              selectedBrand === b
-                ? "border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] text-[#2f5f93] shadow-[0_-1px_0_rgba(255,255,255,0.9),0_10px_24px_rgba(53,92,138,0.10)]"
-                : "border-transparent bg-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white/70 hover:text-slate-700"
-            }`}
-          >
-            {b}
-          </button>
-        ))}
-        <span className="h-5 w-px bg-slate-200" aria-hidden />
         {/* 연도 — iPhone 세그먼트 컨트롤 스타일 */}
         <div className="flex rounded-full bg-slate-200/70 p-0.5">
           {YEARS.map((year) => (

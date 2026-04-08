@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, type ReactNode } from "react";
 import {
+  BrandKey,
   BRAND_ORDER,
   MONTHS,
   StoreRetailMap,
@@ -23,6 +24,8 @@ interface Props {
   storeDirectCostMap?: StoreDirectCostMap;
   retailYoy2025Map?: Record<string, Record<number, number>> | null;
   retailStore2026?: RetailStoreData | null;
+  selectedBrand?: BrandKey;
+  onSelectedBrandChange?: (b: BrandKey) => void;
 }
 
 /** 월 선택 모드: annual=26년연간목표, annual25=25년연간실적, target=26월별목표, actual=26월별실적, actual25=25월별실적 */
@@ -2476,9 +2479,10 @@ export default function PLView({
   storeDirectCostMap = {},
   retailYoy2025Map = null,
   retailStore2026 = null,
+  selectedBrand: selectedBrandProp,
+  onSelectedBrandChange,
 }: Props) {
   const [selectedMonth, setSelectedMonth] = useState<MonthOption>("annual");
-  const [selectedBrand, setSelectedBrand] = useState<string>("");
   const [modalDealer, setModalDealer] = useState<DealerPL | null>(null);
   const [calcLogicOpen, setCalcLogicOpen] = useState(false);
   const [dealerOpenGroups, setDealerOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
@@ -2500,7 +2504,9 @@ export default function PLView({
     return BRAND_ORDER.filter((b) => Object.keys(storeRetailMap[b] ?? {}).length > 0);
   }, [storeRetailMap]);
 
-  const activeBrand = selectedBrand || brands[0] || "";
+  const activeBrand = (selectedBrandProp && brands.includes(selectedBrandProp as BrandKey))
+    ? selectedBrandProp
+    : brands[0] || "";
 
   const plMonthLabel = useMemo(() => {
     if (selectedMonth === "annual") return "26년 연간목표";
@@ -2803,20 +2809,6 @@ export default function PLView({
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-sm font-bold text-slate-700">대리상별 손익계산서</h2>
-            <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
-              {brands.map((b) => (
-                <button
-                  key={b}
-                  type="button"
-                  onClick={() => setSelectedBrand(b)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    activeBrand === b ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  {b}
-                </button>
-              ))}
-            </div>
             <button
               type="button"
               onClick={() => setCalcLogicOpen(true)}
