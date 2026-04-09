@@ -143,10 +143,10 @@ function ovwCalcAnnualOpProfit(
 }
 
 /**
- * PL "26년 연간TGT"와 동일: TGT 시뮬 리테일 + CSV 대리상 가중 할인율 + CSV 출고율 + CSV 직접비(12개월)
+ * PL "26년 연간TGT"와 동일: 시뮬 = Tag, 리테일(V+)=Tag×(CSV 연간 retail/Tag) + CSV 출고율 + CSV 직접비(12개월)
  */
 function ovwCalcTgtOpProfit(
-  tgtRetail: number,
+  tgtTag: number,
   st: StoreRetailRow[],
   cogsRate: number,
   dcMap: StoreDirectCostMap,
@@ -159,10 +159,11 @@ function ovwCalcTgtOpProfit(
     const sr = MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0);
     return sum + ovwCalcTag(sr, s.discountRate);
   }, 0);
-  const tag = annualRetailCsv > 0 ? tgtRetail * (annualTagCsv / annualRetailCsv) : tgtRetail;
+  const tag = tgtTag;
+  const retail = annualTagCsv > 0 ? tag * (annualRetailCsv / annualTagCsv) : 0;
 
   const cogs = (tag * cogsRate) / OVW_PL.vatFactor;
-  const grossProfit = tgtRetail / OVW_PL.vatFactor - cogs;
+  const grossProfit = retail / OVW_PL.vatFactor - cogs;
 
   let salary = 0, bonus = 0, insurance = 0, rent = 0, depr = 0,
       marketing = 0, packaging = 0, payFee = 0, othersLine = 0;
@@ -414,10 +415,10 @@ export default function OverviewScenario1Table({
       for (const m of filtered) {
         const st = brandStoresTgt[m.account_id] ?? [];
         const cogsRate = brandCogsMapTgt[m.account_id] ?? globalAvgTgt;
-        const tgtRetail = m.apparel.sales + m.acc.sales;
+        const tgtTag = m.apparel.sales + m.acc.sales; // 재고자산(TGT) 시뮬 Tag
         opProfitTgt2026Map.set(
           m.account_id,
-          ovwCalcTgtOpProfit(tgtRetail, st, cogsRate, storeDirectCostMap),
+          ovwCalcTgtOpProfit(tgtTag, st, cogsRate, storeDirectCostMap),
         );
       }
     }
@@ -672,7 +673,12 @@ export default function OverviewScenario1Table({
             {/* 1단 헤더 */}
             <tr className="bg-[#245089]">
               {/* TGT 컬럼들 */}
-              <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20`}>당년매출</th>
+              <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20`}>
+                <span className="flex flex-col items-center justify-center gap-0.5 leading-tight">
+                  <span>당년매출</span>
+                  <span className="text-[9px] font-normal opacity-90">(Tag)</span>
+                </span>
+              </th>
               <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20`}>BO목표대비</th>
               <th colSpan={3} className={`${thSub} border-l border-white/20`}>매출성장율</th>
               <th colSpan={2} className={`${thSub} border-l border-white/20`}>의류판매율</th>
@@ -708,7 +714,12 @@ export default function OverviewScenario1Table({
                 </button>
               </th>
               {/* BO.목표 컬럼들 */}
-              <th rowSpan={2} className={`${thSub} align-middle border-l-2 border-l-white/60 bg-[#0f766e]`}>당년매출</th>
+              <th rowSpan={2} className={`${thSub} align-middle border-l-2 border-l-white/60 bg-[#0f766e]`}>
+                <span className="flex flex-col items-center justify-center gap-0.5 leading-tight">
+                  <span>당년매출</span>
+                  <span className="text-[9px] font-normal opacity-90">(Tag)</span>
+                </span>
+              </th>
               <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20 bg-[#0f766e]`}>매출성장율</th>
               <th colSpan={2} className={`${thSub} border-l border-white/20 bg-[#0f766e]`}>기말재고</th>
               <th colSpan={3} className={`${thSub} border-l border-white/20 bg-[#0f766e]`}>영업이익</th>

@@ -24,7 +24,7 @@ interface Props {
   storeDirectCostMap?: StoreDirectCostMap;
   retailYoy2025Map?: Record<string, Record<number, number>> | null;
   retailStore2026?: RetailStoreData | null;
-  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 리테일: brand → accountId → apparel.sales+acc.sales */
+  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 Tag: brand → accountId → apparel.sales+acc.sales(Tag) */
   tgtRetailMap?: Record<string, Record<string, number>>;
   selectedBrand?: BrandKey;
   onSelectedBrandChange?: (b: BrandKey) => void;
@@ -2505,6 +2505,12 @@ export default function PLView({
 
   const isActual = isActualMonth(selectedMonth);
   const is2025 = is2025Mode(selectedMonth);
+  /** 26년 연간TGT만 매장 모달 비활성(연간목표·월별 등은 동일 StoreModal 유지) */
+  const plNoStoreModal = is2025 || selectedMonth === "annualTgt";
+
+  useEffect(() => {
+    if (selectedMonth === "annualTgt") setModalDealer(null);
+  }, [selectedMonth]);
 
   const actualMonthCount = useMemo(() => getActualMonthCount(retailStore2026), [retailStore2026]);
   const dropdownOptions = useMemo(() => buildDropdownOptions(actualMonthCount), [actualMonthCount]);
@@ -2695,7 +2701,7 @@ export default function PLView({
         });
     }
 
-    // ── 연간TGT 모드: 재고자산(TGT) 시뮬레이션 리테일 + 연간목표 기준 할인율/원가율 + CSV 직접비 ──
+    // ── 연간TGT 모드: 시뮬 = Tag(재고자산 TGT 매출), 리테일(V+)=Tag×(26년 연간목표 retail/Tag) + CSV 출고율·직접비 ──
     if (selectedMonth === "annualTgt") {
       const brandStoresTgt = storeRetailMap[activeBrand] ?? {};
       const tgtBrandMap = tgtRetailMap[activeBrand] ?? {};
@@ -2703,9 +2709,8 @@ export default function PLView({
         .sort(([a], [b]) => a.localeCompare(b))
         .filter(([accountId]) => (tgtBrandMap[accountId] ?? 0) > 0)
         .map(([accountId, st]) => {
-          const retail = tgtBrandMap[accountId] ?? 0;
+          const tag = tgtBrandMap[accountId] ?? 0;
 
-          // 대리상 단위 가중평균 할인율: "26년 연간목표" CSV 기준 tag/retail 비율 적용
           const annualRetail = st.reduce(
             (sum, s) => sum + MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0), 0,
           );
@@ -2713,15 +2718,20 @@ export default function PLView({
             const sr = MONTHS.reduce((ms, mm) => ms + (s.months[mm] ?? 0), 0);
             return sum + calcTag(sr, s.discountRate);
           }, 0);
-          const tag = annualRetail > 0 ? retail * (annualTag / annualRetail) : retail;
+          const retail = annualTag > 0 ? tag * (annualRetail / annualTag) : 0;
 
           const cogsRate = brandCogsMap[accountId] ?? globalAvg;
           const cogs = (tag * cogsRate) / PL_CALC.retailVatFactor;
           const grossProfit = retail / PL_CALC.retailVatFactor - cogs;
 
-          // 직접비: "26년 연간목표"와 동일 — CSV 월별 리테일 기준 12개월 합산
-          let salary = 0, bonus = 0, headcount = 0, insurance = 0, rent = 0,
-              depr = 0, marketing = 0, packaging = 0, payFee = 0, othersLine = 0;
+          // 직접비: 26년 연간목표 합산 후 고정비/변동비 분리 적용
+          // - 고정비(급여·임차·감가): 연간목표 값 그대로
+          // - 변동비(성과급·마케팅 등): 연간목표 기준율 × TGT 리테일(V+) ÷ 1.13
+          // - 보험금: (고정급여 + TGT성과급) × 보험율(연간목표 가중평균)
+          let headcount = 0;
+          let annualSalary = 0, annualBonus = 0, annualInsurance = 0;
+          let annualRent = 0, annualDepr = 0;
+          let annualMarketing = 0, annualPackaging = 0, annualPayFee = 0, annualOthersLine = 0;
           for (const s of st) {
             const dc = storeDirectCostMap[s.storeCode];
             if (!dc) continue;
@@ -2734,12 +2744,31 @@ export default function PLView({
               const insM = (salM + bonusM) * dc.insuranceRate;
               const deprM = calcDeprForMonth(dc.interiorCost, dc.openMonth, dc.amortEndMonth, dc.closedMonth, curYM);
               const oc = calcOtherCostsMonth(retailM);
-              salary += salM; bonus += bonusM; insurance += insM;
-              rent += rentTotalMonth(retailM, dc); depr += deprM;
-              marketing += oc.marketing; packaging += oc.packaging;
-              payFee += oc.payFee; othersLine += oc.othersLine;
+              annualSalary += salM; annualBonus += bonusM; annualInsurance += insM;
+              annualRent += rentTotalMonth(retailM, dc); annualDepr += deprM;
+              annualMarketing += oc.marketing; annualPackaging += oc.packaging;
+              annualPayFee += oc.payFee; annualOthersLine += oc.othersLine;
             }
           }
+
+          // 고정비: 연간목표 값 그대로
+          const salary = annualSalary;
+          const rent = annualRent;
+          const depr = annualDepr;
+
+          // 변동비: 연간목표 리테일 대비 TGT 리테일 비율로 스케일링
+          const scale = annualRetail > 0 ? retail / annualRetail : 0;
+          const bonus = annualBonus * scale;
+          const marketing = annualMarketing * scale;
+          const packaging = annualPackaging * scale;
+          const payFee = annualPayFee * scale;
+          const othersLine = annualOthersLine * scale;
+
+          // 보험금: (고정급여 + TGT변동성과급) × 연간목표 가중평균 보험율
+          const annualLaborBase = annualSalary + annualBonus;
+          const effectiveInsuranceRate = annualLaborBase > 0 ? annualInsurance / annualLaborBase : 0;
+          const insurance = (salary + bonus) * effectiveInsuranceRate;
+
           const directCost = salary + bonus + insurance + rent + depr + marketing + packaging + payFee + othersLine;
           return {
             accountId,
@@ -2992,17 +3021,17 @@ export default function PLView({
                 return (
                   <tr
                     key={row.accountId}
-                    role={is2025 ? undefined : "button"}
-                    tabIndex={is2025 ? undefined : 0}
-                    onClick={is2025 ? undefined : () => setModalDealer(row)}
-                    onKeyDown={is2025 ? undefined : (e) => {
+                    role={plNoStoreModal ? undefined : "button"}
+                    tabIndex={plNoStoreModal ? undefined : 0}
+                    onClick={plNoStoreModal ? undefined : () => setModalDealer(row)}
+                    onKeyDown={plNoStoreModal ? undefined : (e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         setModalDealer(row);
                       }
                     }}
                     className={`transition-colors ${
-                      is2025
+                      plNoStoreModal
                         ? i % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                         : `cursor-pointer ${i % 2 === 0 ? "bg-white hover:bg-blue-50/60" : "bg-slate-50/50 hover:bg-blue-50/60"}`
                     }`}
@@ -3021,7 +3050,7 @@ export default function PLView({
                           {rowNameLabel}
                         </span>
                       )}
-                      {activeStoreCount > 0 && (
+                      {activeStoreCount > 0 && selectedMonth !== "annualTgt" && (
                         <span className="ml-2 text-[10px] text-blue-400">
                           ▶ {activeStoreCount}개 매장
                         </span>
@@ -3091,11 +3120,12 @@ export default function PLView({
         </div>
 
         <p className="text-right text-[11px] text-slate-400">
-          단위: 천위안(千元) · 기타(마케팅/포장/지급수수료) 항목은 추후 추가 · 대리상 행 클릭 시 매장별 상세 조회
+          단위: 천위안(千元) · 기타(마케팅/포장/지급수수료) 항목은 추후 추가
+          {selectedMonth !== "annualTgt" && " · 대리상 행 클릭 시 매장별 상세 조회"}
         </p>
       </div>
 
-      {modalDealer && (
+      {modalDealer && selectedMonth !== "annualTgt" && (
         <StoreModal
           dealer={modalDealer}
           brand={activeBrand}

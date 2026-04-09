@@ -74,7 +74,7 @@ export default function DashboardClient({
       .catch(() => {});
   }, []);
 
-  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 리테일 = apparel.sales + acc.sales */
+  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 Tag = apparel.sales + acc.sales(Tag) */
   const tgtRetailMap = useMemo((): Record<string, Record<string, number>> => {
     if (!data2026) return {};
     const blended = retail2026 ? blendRetail(retail2026, growthRates, retailDw2025) : null;
