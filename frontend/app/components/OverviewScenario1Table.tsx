@@ -34,6 +34,9 @@ import {
 const OVERVIEW_AI_ALLOW_CLIENT_API =
   process.env.NEXT_PUBLIC_OVERVIEW_AI_ALLOW_REANALYZE !== "false";
 
+/** 로컬 `npm run dev`에서만 프로젝트 경로로 JSON 덮어쓰기 API 사용 */
+const IS_NEXT_DEV = process.env.NODE_ENV === "development";
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -824,6 +827,8 @@ export default function OverviewScenario1Table({
   >(undefined);
   /** 재분석 성공 후 세션 동안 정적 스냅샷보다 캐시/신규 결과 우선 */
   const [preferLiveAnalysis, setPreferLiveAnalysis] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectSaveHint, setProjectSaveHint] = useState<string | null>(null);
 
   useEffect(() => {
     setPreferLiveAnalysis(false);
@@ -855,21 +860,50 @@ export default function OverviewScenario1Table({
     };
   }, [brand]);
 
-  const downloadOverviewAiJsonFile = useCallback(() => {
+  const saveOverviewAiToProject = useCallback(async () => {
     if (!totalRow || !aiFingerprint || !aiAnalysisData) return;
-    const payload = { fingerprint: aiFingerprint, analysis: aiAnalysisData };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const ts = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const fname = `overview-ai-${brandToOverviewAiSlug(brand)}-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}.json`;
-    a.href = url;
-    a.download = fname;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!IS_NEXT_DEV) return;
+    setProjectSaveHint(null);
+    setProjectSaving(true);
+    const slug = brandToOverviewAiSlug(brand);
+    try {
+      const res = await fetch("/api/dev/save-overview-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          data: { fingerprint: aiFingerprint, analysis: aiAnalysisData },
+        }),
+      });
+      const j = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        path?: string;
+      };
+      if (!res.ok) {
+        setProjectSaveHint(j.error ?? `저장 실패 (${res.status})`);
+        return;
+      }
+      const rel = j.path ?? `public/data/overview-ai/${slug}.json`;
+      setProjectSaveHint(`저장됨: ${rel} — git commit 후 push 하면 배포에 반영됩니다.`);
+      setPreferLiveAnalysis(false);
+      try {
+        const res2 = await fetch(`/data/overview-ai/${slug}.json`, {
+          cache: "no-store",
+        });
+        if (res2.ok) {
+          const raw: unknown = await res2.json();
+          const parsed = parseStaticOverviewAiJson(raw);
+          setStaticOverviewAi(parsed);
+        }
+      } catch {
+        /* ignore refetch errors */
+      }
+    } catch {
+      setProjectSaveHint("요청 실패 — 개발 서버(npm run dev)에서 실행 중인지 확인하세요.");
+    } finally {
+      setProjectSaving(false);
+    }
   }, [brand, totalRow, aiFingerprint, aiAnalysisData]);
 
   const downloadTableHtml = useCallback(() => {
@@ -1119,14 +1153,16 @@ ${overviewTableSnapshotOuterHtml(el)}
               ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={!aiAnalysisData}
-                onClick={() => downloadOverviewAiJsonFile()}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                분석 JSON 저장
-              </button>
+              {IS_NEXT_DEV ? (
+                <button
+                  type="button"
+                  disabled={!aiAnalysisData || projectSaving}
+                  onClick={() => void saveOverviewAiToProject()}
+                  className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {projectSaving ? "저장 중..." : "프로젝트에 덮어쓰기"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => downloadTableHtml()}
@@ -1137,12 +1173,25 @@ ${overviewTableSnapshotOuterHtml(el)}
             </div>
           </div>
           <p className="mb-1 text-[11px] leading-snug text-slate-500">
-            배포용: 저장한 JSON을{" "}
+            배포용 경로(항상 같은 파일명으로 덮어쓰기):{" "}
             <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px]">
               public/data/overview-ai/{brandToOverviewAiSlug(brand)}.json
             </code>
-            으로 넣어 푸시하면 동일 분석이 표시됩니다.
+            {IS_NEXT_DEV
+              ? " — 「프로젝트에 덮어쓰기」로 저장 후 git commit·push 하면 GitHub·Vercel에 반영됩니다."
+              : " — 갱신은 로컬에서 `npm run dev` 실행 후 같은 화면의 「프로젝트에 덮어쓰기」로 위 경로를 덮어쓰고 커밋·푸시하세요."}
           </p>
+          {projectSaveHint ? (
+            <p
+              className={`mb-1 text-[11px] leading-snug ${
+                projectSaveHint.startsWith("저장됨")
+                  ? "text-emerald-800"
+                  : "text-red-700"
+              }`}
+            >
+              {projectSaveHint}
+            </p>
+          ) : null}
           <div className="mb-3 min-h-[1.125rem] text-xs leading-relaxed text-slate-600">
             {!staticAiResolved ? (
               <span className="text-slate-400">정적 분석 파일 여부 확인 중...</span>
@@ -1167,7 +1216,7 @@ ${overviewTableSnapshotOuterHtml(el)}
                 {!aiLoading && !aiError && !aiStale && !aiAnalysisData && (
                   <span className="text-slate-500">
                     {staticOverviewAi === null && !OVERVIEW_AI_ALLOW_CLIENT_API
-                      ? "정적 분석 파일이 없고 API 호출이 비활성화되어 있습니다. 로컬에서 분석 JSON을 생성·커밋하거나 API를 켜 주세요."
+                      ? "정적 분석 파일이 없고 API 호출이 비활성화되어 있습니다. 로컬에서 「프로젝트에 덮어쓰기」로 생성·커밋하거나 API를 켜 주세요."
                       : "분석을 생성하려면 AI 분석 또는 재분석을 눌러 주세요."}
                   </span>
                 )}
