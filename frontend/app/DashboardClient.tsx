@@ -142,7 +142,11 @@ export default function DashboardClient({
         </div>
       </header>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div
+        className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${
+          activeTab === "overview" ? "w-fit max-w-full" : "w-full"
+        }`}
+      >
         {activeTab === "overview" && (
           <OverviewScenario1Table
             data2025={data2025}
