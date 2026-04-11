@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, type ReactNode } from "react";
 
 import { BrandKey, StockData, RetailData, InboundData, AppOtbData } from "../../lib/types";
 import { fmtAmt } from "../../lib/utils";
@@ -44,6 +44,8 @@ interface Props {
   sellThroughRates?: SellThroughRates;
   onSellThroughRatesChange?: (next: SellThroughRates) => void;
   accountNameMap?: Record<string, { account_nm_en: string; account_nm_kr: string }>;
+  /** 상단 sticky 바 좌측에 노출할 연도 탭 등 (2026 모드 전용) */
+  yearTabs?: ReactNode;
 }
 
 function Num({ v }: { v: number }) {
@@ -85,6 +87,7 @@ export default function DealerDetailTable({
   sellThroughRates: sellThroughRatesProp,
   onSellThroughRatesChange,
   accountNameMap,
+  yearTabs,
 }: Props) {
   const targetWeeks = targetWeeksProp ?? DEFAULT_TARGET_WEEKS;
   const sellThroughRates = sellThroughRatesProp ?? DEFAULT_SELL_THROUGH_RATES;
@@ -638,8 +641,9 @@ export default function DealerDetailTable({
   return (
     <div className="mb-6 space-y-6">
       {year === "2026" && (
-        <div className="sticky top-[120px] z-20 rounded-xl border border-slate-200/80 bg-white overflow-hidden">
-          <div className="flex flex-wrap items-stretch gap-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
+        <div className="sticky top-[65px] z-30 rounded-xl border border-slate-200/80 bg-white overflow-hidden">
+          <div className="flex flex-wrap items-center gap-3 gap-y-2 border-b border-white/20 bg-[#1e3a5f] px-4 py-2.5">
+            {yearTabs}
             <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-xs text-white">리테일성장율(ACC 계획월만 적용)</span>
               <input
@@ -703,27 +707,6 @@ export default function DealerDetailTable({
             <span className="inline-flex items-center gap-1">
               <span className="text-[10px] text-white/90">27F</span>
               <span className="text-[10px] tabular-nums text-white/50">0% 고정</span>
-            </span>
-            <span className="text-white/40">|</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="text-[10px] text-white/90">기타시즌</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={sellThroughRates.currentDefault}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  if (isNaN(v) || !onSellThroughRatesChange) return;
-                  onSellThroughRatesChange({
-                    ...sellThroughRates,
-                    currentDefault: Math.min(100, Math.max(0, v)),
-                  });
-                }}
-                className="h-6 w-11 rounded border border-white/30 bg-white/10 px-1 py-0 text-right text-xs tabular-nums text-white outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30"
-              />
-              <span className="text-[10px] text-white/70">%</span>
             </span>
             <span className="text-white/40">|</span>
             {(["1년차", "2년차"] as const).map((yg) => (
@@ -791,7 +774,7 @@ export default function DealerDetailTable({
         <div
           ref={headScrollRef}
           className="overflow-hidden sticky z-20 bg-white rounded-t-xl"
-          style={{ top: year === "2026" ? "200px" : "120px" }}
+          style={{ top: year === "2026" ? "160px" : "120px" }}
         >
         <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1186 }}>
           {colgroup}

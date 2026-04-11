@@ -55,7 +55,7 @@ export default function DashboardClient({
   retailStore2026 = null,
   actualCogsRateMap = null,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("stock");
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [selectedBrand, setSelectedBrand] = useState<BrandKey>("MLB");
 
   // 목표 탭·simu 탭 공유 state

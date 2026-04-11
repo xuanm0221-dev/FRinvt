@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
       growthRate: number;
       targetWeeks?: Record<string, number>;
       sellThroughRates?: {
-        currentDefault?: number;
         bySeason?: Record<string, number>;
         yearGroup?: Record<string, number>;
         oldSeason?: number;
@@ -106,10 +105,19 @@ export async function POST(req: NextRequest) {
     : "N/A";
   const bySeason = tgtParams.sellThroughRates?.bySeason
     ? Object.entries(tgtParams.sellThroughRates.bySeason)
-        .filter(([, v]) => v > 0)
+        .filter(([s, v]) => s !== "27F" && v > 0)
         .map(([s, v]) => `${s} ${v}%`)
         .join(", ")
     : "";
+  const yearGroupStr = tgtParams.sellThroughRates?.yearGroup
+    ? Object.entries(tgtParams.sellThroughRates.yearGroup)
+        .map(([k, v]) => `${k} ${v}%`)
+        .join(", ")
+    : "";
+  const oldSeasonStr = tgtParams.sellThroughRates?.oldSeason != null
+    ? `과시즌 ${tgtParams.sellThroughRates.oldSeason}%`
+    : "";
+  const stParts = [bySeason, yearGroupStr, oldSeasonStr].filter(Boolean).join(", ");
 
   const userMessage = `
 브랜드: ${brand}
@@ -119,7 +127,7 @@ export async function POST(req: NextRequest) {
 [TGT 시뮬레이션 파라미터]
 - 매출성장률: ${tgtParams.growthRate}%
 - 목표 재고주수: ${weeksList}
-- Sell-through 기본: ${tgtParams.sellThroughRates?.currentDefault ?? "N/A"}%${bySeason ? `, 시즌별: ${bySeason}` : ""}
+- Sell-through: ${stParts || "N/A"}
 
 [전체 합계 지표]
 - TGT 매출: ${fmtK(summary.tgtSales)} (전년 대비 ${toP(summary.salesYoyTgt)})

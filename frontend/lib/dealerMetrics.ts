@@ -18,28 +18,23 @@ const OTB_SEASONS_ARR = ["26S", "26F", "27S", "27F"] as const;
 /** 2026 의류 판매 = (기초+매입)×% — 시즌·연차·과시즌별 (27F는 항상 0%) */
 export interface SellThroughRates {
   bySeason: Record<string, number>;
-  /** bySeason 에 없는 시즌 코드 */
-  currentDefault: number;
   yearGroup: Record<string, number>;
   oldSeason: number;
 }
 
 export const DEFAULT_SELL_THROUGH_RATES: SellThroughRates = {
   bySeason: { "27S": 10, "26F": 50, "26S": 70, "27F": 0 },
-  currentDefault: 70,
   yearGroup: { "1년차": 60, "2년차": 70 },
   oldSeason: 80,
 };
 
 function sellThroughPctForSeason(season: string, rates: SellThroughRates): number {
   if (season === "27F") return 0;
-  const v = rates.bySeason[season];
-  return v !== undefined ? v : rates.currentDefault;
+  return rates.bySeason[season] ?? 0;
 }
 
 function sellThroughPctForYearGroup(label: string, rates: SellThroughRates): number {
-  const v = rates.yearGroup[label];
-  return v !== undefined ? v : rates.currentDefault;
+  return rates.yearGroup[label] ?? 0;
 }
 export const ACC_ORDER = ["신발", "모자", "가방", "기타"] as const;
 export const DEFAULT_TARGET_WEEKS: Record<string, number> = {

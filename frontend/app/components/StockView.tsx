@@ -549,27 +549,46 @@ export default function StockView({
   const stockEstimatedMonths: number[] = [];
 
 
+  const yearTabsNode = (
+    <div className="flex rounded-full bg-white/10 p-0.5">
+      {YEARS.map((year) => (
+        <button
+          key={year}
+          onClick={() => setActiveYear(year)}
+          className={`min-w-[4rem] rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 ${
+            activeYear === year
+              ? "bg-white text-slate-800 shadow-sm"
+              : "text-white/70 hover:text-white"
+          }`}
+        >
+          {year}년
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div>
-      {/* 연도 탭 */}
-      <div className="sticky top-[65px] z-30 mb-5 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur">
-        {/* 연도 — iPhone 세그먼트 컨트롤 스타일 */}
-        <div className="flex rounded-full bg-slate-200/70 p-0.5">
-          {YEARS.map((year) => (
-            <button
-              key={year}
-              onClick={() => setActiveYear(year)}
-              className={`min-w-[4rem] rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 ${
-                activeYear === year
-                  ? "bg-white text-slate-800 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {year}년
-            </button>
-          ))}
+      {/* 2025 모드 연도 탭 (2026는 DealerDetailTable 상단 바에 통합) */}
+      {activeYear === "2025" && (
+        <div className="sticky top-[65px] z-30 mb-5 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur">
+          <div className="flex rounded-full bg-slate-200/70 p-0.5">
+            {YEARS.map((year) => (
+              <button
+                key={year}
+                onClick={() => setActiveYear(year)}
+                className={`min-w-[4rem] rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                  activeYear === year
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {year}년
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 리테일매출 섹션 */}
       <div className="mb-10">
@@ -609,6 +628,7 @@ export default function StockView({
             else setInternalSellThroughRates(next);
           }}
           accountNameMap={accountNameMap}
+          yearTabs={yearTabsNode}
         />
         <hr className="my-6 border-0 border-t-2 border-slate-200" />
         {activeYear === "2025" ? (

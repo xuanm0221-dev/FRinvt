@@ -249,46 +249,25 @@ function Num({ v }: { v: number }) {
 
 function Yoy({ v }: { v: number | null }) {
   if (v === null) return <span></span>;
-  const cls =
-    v >= 100
-      ? "text-green-600 font-medium"
-      : v >= 90
-        ? "text-amber-500"
-        : v >= 80
-          ? "text-orange-500"
-          : "text-red-600 font-medium";
-  return <span className={cls}>{Math.round(v)}%</span>;
+  return <span>{Math.round(v)}%</span>;
 }
 
 /** 차이값 표시: unit="pp" → "+1.2%p", unit="주" → "+2.3주" */
 function Diff({ v, unit }: { v: number | null; unit: "pp" | "주" }) {
   if (v === null) return <span />;
   const sign = v >= 0 ? "+" : "";
-  const cls = v >= 0 ? "text-green-600" : "text-red-500";
   const label =
     unit === "pp"
       ? `${sign}${v.toFixed(1)}%p`
       : `${sign}${v.toFixed(1)}주`;
-  return <span className={cls}>{label}</span>;
-}
-
-function DiffMuted({ v, unit }: { v: number | null; unit: "pp" | "주" }) {
-  if (v === null) return <span />;
-  const sign = v >= 0 ? "+" : "";
-  const cls = v >= 0 ? "text-green-300" : "text-red-300";
-  const label =
-    unit === "pp"
-      ? `${sign}${v.toFixed(1)}%p`
-      : `${sign}${v.toFixed(1)}주`;
-  return <span className={cls}>{label}</span>;
+  return <span>{label}</span>;
 }
 
 /** 금액 차이: +X,XXX 형태 */
 function DiffAmt({ v }: { v: number | null }) {
   if (v === null) return <span />;
   const sign = v >= 0 ? "+" : "";
-  const cls = v >= 0 ? "text-green-600" : "text-red-500";
-  return <span className={cls}>{sign}{fmtAmt(Math.round(v))}</span>;
+  return <span>{sign}{fmtAmt(Math.round(v))}</span>;
 }
 
 /** AI 분석 캐시 (브라우저 localStorage — 계산 로직과 무관) */
@@ -382,7 +361,7 @@ export default function OverviewScenario1Table({
 }: OverviewScenario1TableProps) {
   const targetWeeks = targetWeeksProp ?? DEFAULT_TARGET_WEEKS;
   const sellThroughRates = sellThroughRatesProp ?? DEFAULT_SELL_THROUGH_RATES;
-  const [sortState, setSortState] = useState<SortState>(null);
+  const [sortState, setSortState] = useState<SortState>({ col: "ending", dir: "desc" });
 
   const cycleSort = (col: SortColumn) => {
     setSortState((s) => {
@@ -738,6 +717,133 @@ export default function OverviewScenario1Table({
     return arr;
   }, [metrics, sortState, opProfit2026Map, accountNameMap]);
 
+  /**
+   * 3구간 히트맵 factory:
+   *  - 빨강 `rgba(239,68,68,α)` = 부정(bad), 파랑 `rgba(59,130,246,α)` = 의문(question)
+   *  - lowIsBad=true  → 낮은 쪽이 빨강, 높은 쪽이 파랑 (예: 매출 YOY — <100 bad, >120 question)
+   *  - lowIsBad=false → 낮은 쪽이 파랑, 높은 쪽이 빨강 (예: 기말재고 YOY — >100 bad, <80 question)
+   *  - lowCutoff 미만 / highCutoff 초과일 때만 색칠, 중간은 클린
+   *  - 각 구간은 해당 구간 값들의 5/95 퍼센타일로 스케일 (이상치 흡수)
+   */
+  const makeBandedHeatBg = (
+    values: number[],
+    lowCutoff: number,
+    highCutoff: number,
+    lowIsBad: boolean,
+  ) => {
+    const RED = "239, 68, 68";
+    const BLUE = "59, 130, 246";
+    const lowColor = lowIsBad ? RED : BLUE;
+    const highColor = lowIsBad ? BLUE : RED;
+    const pick = (arr: number[], p: number) =>
+      arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * p)))];
+    const below = values.filter((v) => v < lowCutoff).sort((a, b) => a - b);
+    const above = values.filter((v) => v > highCutoff).sort((a, b) => a - b);
+    const lowBound = below.length > 0 ? pick(below, 0.05) : null;
+    const highBound = above.length > 0 ? pick(above, 0.95) : null;
+    return (value: number | null): string | undefined => {
+      if (value == null) return undefined;
+      if (value < lowCutoff) {
+        if (lowBound == null) return undefined;
+        const span = lowCutoff - lowBound;
+        if (span <= 0) return undefined;
+        const ratio = Math.min(1, Math.max(0, (lowCutoff - value) / span));
+        return `rgba(${lowColor}, ${(ratio * 0.35).toFixed(3)})`;
+      }
+      if (value > highCutoff) {
+        if (highBound == null) return undefined;
+        const span = highBound - highCutoff;
+        if (span <= 0) return undefined;
+        const ratio = Math.min(1, Math.max(0, (value - highCutoff) / span));
+        return `rgba(${highColor}, ${(ratio * 0.35).toFixed(3)})`;
+      }
+      return undefined;
+    };
+  };
+  const makeYoyHeatBg = (values: number[]) => makeBandedHeatBg(values, 100, 120, true);
+  const purchaseSumYoyHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = metrics2025Map.get(m.account_id);
+      if (!prev) continue;
+      const cur = m.apparel.purchase + m.acc.purchase;
+      const prv = prev.apparel.purchase + prev.acc.purchase;
+      if (prv > 0) values.push((cur / prv) * 100);
+    }
+    return makeYoyHeatBg(values);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, metrics2025Map]);
+  const tgtSalesGrowthHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = (m.apparel.prevRetailSalesPos ?? 0) + (m.acc.prevRetailSalesPos ?? 0);
+      const cur = (m.apparel.retailSalesPos ?? 0) + (m.acc.retailSalesPos ?? 0);
+      if (prev > 0) values.push((cur / prev) * 100);
+    }
+    return makeYoyHeatBg(values);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics]);
+  const boSalesGrowthHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = prevSalesMap.get(m.account_id) ?? 0;
+      const bo = boSalesMap.get(m.account_id) ?? 0;
+      if (prev > 0) values.push((bo / prev) * 100);
+    }
+    return makeYoyHeatBg(values);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, prevSalesMap, boSalesMap]);
+  /** (TGT) 기말재고 전년비(%) — >100 빨강(증가·부정), <80 파랑(과감소·의문) */
+  const tgtEndingYoyHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = metrics2025Map.get(m.account_id);
+      if (!prev) continue;
+      const curEnding = m.apparel.ending + m.acc.ending;
+      const prevEnding = prev.apparel.ending + prev.acc.ending;
+      if (prevEnding > 0) values.push((curEnding / prevEnding) * 100);
+    }
+    return makeBandedHeatBg(values, 80, 100, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, metrics2025Map]);
+  /** (BO.목표) 기말재고 전년비(%) — 동일 로직 */
+  const boEndingYoyHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const boEnding = boEndingMap.get(m.account_id) ?? 0;
+      const boBase = boBaseMap.get(m.account_id) ?? 0;
+      if (boBase > 0) values.push((boEnding / boBase) * 100);
+    }
+    return makeBandedHeatBg(values, 80, 100, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, boEndingMap, boBaseMap]);
+  /** 의류판매율 전년비(pp) — <0 빨강(감소·부정), >+5 파랑(과증가·의문) */
+  const sellThroughDiffHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = metrics2025Map.get(m.account_id);
+      if (!prev) continue;
+      if (m.apparel.sellThrough != null && prev.apparel.sellThrough != null) {
+        values.push(m.apparel.sellThrough - prev.apparel.sellThrough);
+      }
+    }
+    return makeBandedHeatBg(values, 0, 5, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, metrics2025Map]);
+  /** 재고주수 전년비(주) — 마이너스 긍정·클린, ≤-10주 파랑(과감소·의문), 플러스 빨강(증가·부정) */
+  const weeksDiffHeatBg = useMemo(() => {
+    const values: number[] = [];
+    for (const m of metrics) {
+      const prev = metrics2025Map.get(m.account_id);
+      if (!prev) continue;
+      if (m.acc.weeks != null && prev.acc.weeks != null) {
+        values.push(m.acc.weeks - prev.acc.weeks);
+      }
+    }
+    return makeBandedHeatBg(values, -10, 0, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics, metrics2025Map]);
+
   const [showTagSalesCols, setShowTagSalesCols] = useState(false);
   const [showGrowthDetail, setShowGrowthDetail] = useState(false);
   /** false면 매입 금액(당년) 3열만 숨기고 합계·의류·ACC YOY 3열은 유지 */
@@ -821,6 +927,7 @@ export default function OverviewScenario1Table({
   const [aiStale, setAiStale] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
+  const [heatmapGuideOpen, setHeatmapGuideOpen] = useState(false);
   /** public/data/overview-ai/{slug}.json — undefined: 로딩 전, null: 파일 없음 */
   const [staticOverviewAi, setStaticOverviewAi] = useState<
     StaticOverviewAiPayload | null | undefined
@@ -833,6 +940,10 @@ export default function OverviewScenario1Table({
   useEffect(() => {
     setPreferLiveAnalysis(false);
   }, [brand, aiFingerprint]);
+
+  useEffect(() => {
+    setProjectSaveHint(null);
+  }, [brand]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1082,16 +1193,15 @@ ${overviewTableSnapshotOuterHtml(el)}
     "px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-white border-b border-white/20";
   const thSub =
     "px-2 py-1.5 text-center text-[10px] font-medium text-white/80 border-b border-white/15";
-  const td = "px-3 py-2 text-right tabular-nums text-sm text-slate-700 border-b border-slate-100";
-  const tdMuted = "px-3 py-2 text-right tabular-nums text-sm text-slate-400 border-b border-slate-100";
-  const tdLabel = "px-2 py-2 text-left text-xs text-slate-800 border-b border-slate-100 whitespace-nowrap";
+  const td = "px-3 py-2 text-right tabular-nums text-sm text-black border-b border-slate-100";
+  const tdLabel = "px-2 py-2 text-left text-xs text-black border-b border-slate-100 whitespace-nowrap";
 
-  // colSpan 계산 (TGT vs BO목표(Tag매출) 중복열 제거 → tgtColSpan 기준 -1, 비교섹션 +5)
+  // colSpan 계산 (TGT vs BO목표(Tag매출) 중복열 제거 → tgtColSpan 기준 -1, 비교섹션 +4)
   const tgtColSpan = 14 - (showTagSalesCols ? 0 : 1) - (showGrowthDetail ? 0 : 2);
   const boColSpan  =  7 - (showTagSalesCols ? 0 : 1);
   const purchaseColCount = showPurchaseAmtCols ? 6 : 3;
   const totalCols =
-    27 +
+    26 +
     purchaseColCount -
     (showTagSalesCols ? 0 : 2) -
     (showGrowthDetail ? 0 : 2);
@@ -1125,167 +1235,297 @@ ${overviewTableSnapshotOuterHtml(el)}
 
   return (
     <div className="w-max max-w-full shrink-0 min-w-0">
-      {/* AI 분석: [AI 분석] [재분석] … [표 HTML 저장] — 캐시 + 재분석 API */}
-      {totalRow && (
-        <>
-          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (aiAnalysisData) setAnalysisModalOpen(true);
-                  else void runAiFetch();
-                }}
-                disabled={aiLoading || !staticAiResolved}
-                className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                AI 분석
-              </button>
-              {OVERVIEW_AI_ALLOW_CLIENT_API ? (
-                <button
-                  type="button"
-                  disabled={aiLoading || !staticAiResolved}
-                  onClick={() => void runAiFetch()}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {aiLoading ? "분석 중..." : "재분석"}
-                </button>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {IS_NEXT_DEV ? (
-                <button
-                  type="button"
-                  disabled={!aiAnalysisData || projectSaving}
-                  onClick={() => void saveOverviewAiToProject()}
-                  className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {projectSaving ? "저장 중..." : "프로젝트에 덮어쓰기"}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => downloadTableHtml()}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-              >
-                표 HTML 저장
-              </button>
-            </div>
-          </div>
-          <p className="mb-1 text-[11px] leading-snug text-slate-500">
-            배포용 경로(항상 같은 파일명으로 덮어쓰기):{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px]">
-              public/data/overview-ai/{brandToOverviewAiSlug(brand)}.json
-            </code>
-            {IS_NEXT_DEV
-              ? " — 「프로젝트에 덮어쓰기」로 저장 후 git commit·push 하면 GitHub·Vercel에 반영됩니다."
-              : " — 갱신은 로컬에서 `npm run dev` 실행 후 같은 화면의 「프로젝트에 덮어쓰기」로 위 경로를 덮어쓰고 커밋·푸시하세요."}
-          </p>
-          {projectSaveHint ? (
-            <p
-              className={`mb-1 text-[11px] leading-snug ${
-                projectSaveHint.startsWith("저장됨")
-                  ? "text-emerald-800"
-                  : "text-red-700"
-              }`}
-            >
-              {projectSaveHint}
-            </p>
-          ) : null}
-          <div className="mb-3 min-h-[1.125rem] text-xs leading-relaxed text-slate-600">
-            {!staticAiResolved ? (
-              <span className="text-slate-400">정적 분석 파일 여부 확인 중...</span>
-            ) : (
-              <>
-                {aiLoading && <span className="text-slate-400">분석 중...</span>}
-                {!aiLoading && aiError && (
-                  <span className="text-red-600">{aiError}</span>
-                )}
-                {!aiLoading && !aiError && aiStale && (
-                  <span className="text-slate-500">
-                    {staticOverviewAi != null && !preferLiveAnalysis
-                      ? "배포된 정적 분석 스냅샷이 현재 표 입력과 다를 수 있습니다. 입력을 맞추거나 JSON을 갱신해 주세요."
-                      : "TGT 입력이 변경되어 이전 분석과 다를 수 있습니다. AI 분석 또는 재분석을 눌러 주세요."}
-                  </span>
-                )}
-                {!aiLoading && !aiError && !aiStale && aiAnalysisData && (
-                  <span className="text-slate-600">
-                    분석이 준비되었습니다. AI 분석에서 카드 상세를 확인하세요.
-                  </span>
-                )}
-                {!aiLoading && !aiError && !aiStale && !aiAnalysisData && (
-                  <span className="text-slate-500">
-                    {staticOverviewAi === null && !OVERVIEW_AI_ALLOW_CLIENT_API
-                      ? "정적 분석 파일이 없고 API 호출이 비활성화되어 있습니다. 로컬에서 「프로젝트에 덮어쓰기」로 생성·커밋하거나 API를 켜 주세요."
-                      : "분석을 생성하려면 AI 분석 또는 재분석을 눌러 주세요."}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        </>
-      )}
       {analysisModalOpen && aiAnalysisData && (
         <AnalysisModal
           data={aiAnalysisData}
           onClose={() => setAnalysisModalOpen(false)}
         />
       )}
-      {/* 열 표시/숨김 토글 + 표 HTML 저장 */}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showTagSalesCols}
-              onChange={e => setShowTagSalesCols(e.target.checked)}
-              className="h-3.5 w-3.5 accent-blue-600"
-            />
-            <span>당년매출(Tag) 열 표시</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showPurchaseAmtCols}
-              onChange={e => setShowPurchaseAmtCols(e.target.checked)}
-              className="h-3.5 w-3.5 accent-blue-600"
-            />
-            <span>매입 당년(금액) 열 표시</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showGrowthDetail}
-              onChange={e => setShowGrowthDetail(e.target.checked)}
-              className="h-3.5 w-3.5 accent-blue-600"
-            />
-            <span>매출성장률 의류·ACC 열 표시</span>
-          </label>
-          <span className="flex flex-wrap items-center gap-2 rounded-md bg-slate-100 px-3 py-1 text-slate-500">
-            <span>
-              TGT 기준({brand}) — 성장률 <strong className="font-semibold text-slate-700">{growthRates[brand]}%</strong>
-            </span>
-            <span className="text-slate-300 select-none">·</span>
-            <span>
-              목표주수:{" "}
-              {Object.entries(targetWeeks ?? {}).map(([cat, w], i, arr) => (
+      {/* 종합분석 상단 통합 행: 성장률·목표주수·ST · 숨김토글 · AI버튼 · 프로젝트저장 · HTML저장 */}
+      {totalRow && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+          <div className="w-fit rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+              성장률 · TGT 기준({brand})
+            </div>
+            <div className="text-slate-700">
+              ACC 리테일 <strong className="font-semibold">{growthRates[brand]}%</strong>
+            </div>
+          </div>
+          <div className="w-fit rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+              목표 재고주수
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-slate-700">
+              {Object.entries(targetWeeks ?? {}).map(([cat, w]) => (
                 <span key={cat}>
-                  <strong className="font-semibold text-slate-700">{cat} {w}주</strong>{i < arr.length - 1 ? " · " : ""}
+                  {cat} <strong className="font-semibold">{w}주</strong>
                 </span>
               ))}
-            </span>
-            <span className="text-slate-300 select-none">·</span>
-            <span>
-              ST: 기본 <strong className="font-semibold text-slate-700">{sellThroughRates?.currentDefault ?? "-"}%</strong>
+            </div>
+          </div>
+          <div className="w-fit rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Sell-through
+            </div>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-slate-700">
               {sellThroughRates?.bySeason && Object.entries(sellThroughRates.bySeason)
-                .filter(([, v]) => v > 0)
+                .filter(([s, v]) => s !== "27F" && v > 0)
                 .map(([season, v]) => (
-                  <span key={season}> · {season} <strong className="font-semibold text-slate-700">{v}%</strong></span>
+                  <span key={season}>
+                    {season} <strong className="font-semibold">{v}%</strong>
+                  </span>
                 ))}
+              {sellThroughRates?.yearGroup && Object.entries(sellThroughRates.yearGroup).map(([label, v]) => (
+                <span key={label}>
+                  {label} <strong className="font-semibold">{v}%</strong>
+                </span>
+              ))}
+              {sellThroughRates?.oldSeason != null && (
+                <span>
+                  과시즌 <strong className="font-semibold">{sellThroughRates.oldSeason}%</strong>
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-y-0.5 text-slate-600">
+            <div className="flex items-center gap-x-3">
+              <label className="flex cursor-pointer items-center gap-1.5 select-none">
+                <input
+                  type="checkbox"
+                  checked={showTagSalesCols}
+                  onChange={e => setShowTagSalesCols(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-blue-600"
+                />
+                <span>당년매출(Tag)</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5 select-none">
+                <input
+                  type="checkbox"
+                  checked={showPurchaseAmtCols}
+                  onChange={e => setShowPurchaseAmtCols(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-blue-600"
+                />
+                <span>매입 당년(금액)</span>
+              </label>
+            </div>
+            <label className="flex cursor-pointer items-center gap-1.5 select-none">
+              <input
+                type="checkbox"
+                checked={showGrowthDetail}
+                onChange={e => setShowGrowthDetail(e.target.checked)}
+                className="h-3.5 w-3.5 accent-blue-600"
+              />
+              <span>매출성장률 의류·ACC</span>
+            </label>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (aiAnalysisData) setAnalysisModalOpen(true);
+                else void runAiFetch();
+              }}
+              disabled={aiLoading || !staticAiResolved}
+              className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              🤖 AI 분석
+            </button>
+            {OVERVIEW_AI_ALLOW_CLIENT_API ? (
+              <button
+                type="button"
+                disabled={aiLoading || !staticAiResolved}
+                onClick={() => void runAiFetch()}
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                {aiLoading ? "분석 중..." : "재분석"}
+              </button>
+            ) : null}
+          </div>
+          {IS_NEXT_DEV ? (
+            <button
+              type="button"
+              disabled={!aiAnalysisData || projectSaving}
+              onClick={() => void saveOverviewAiToProject()}
+              className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {projectSaving ? "저장 중..." : "프로젝트에 덮어쓰기"}
+            </button>
+          ) : null}
+          <div className="flex min-w-0 flex-col gap-y-0.5 text-[11px] leading-snug text-slate-500">
+            <span>
+              <code className="rounded bg-slate-100 px-1 font-mono text-[10px]">
+                public/data/overview-ai/{brandToOverviewAiSlug(brand)}.json
+              </code>
+              {IS_NEXT_DEV ? " — 저장 후 git push 시 반영" : ""}
             </span>
-          </span>
+            <span>
+              {!staticAiResolved ? (
+                <span className="text-slate-400">정적 분석 파일 여부 확인 중...</span>
+              ) : aiLoading ? (
+                <span className="text-slate-400">분석 중...</span>
+              ) : aiError ? (
+                <span className="text-red-600">{aiError}</span>
+              ) : aiStale ? (
+                <span>
+                  {staticOverviewAi != null && !preferLiveAnalysis
+                    ? "배포된 정적 분석 스냅샷이 현재 표 입력과 다를 수 있습니다."
+                    : "TGT 입력이 변경되어 이전 분석과 다를 수 있습니다. 재분석을 눌러 주세요."}
+                </span>
+              ) : aiAnalysisData ? null : (
+                <span>
+                  {staticOverviewAi === null && !OVERVIEW_AI_ALLOW_CLIENT_API
+                    ? "정적 분석 파일이 없고 API 호출이 비활성화되어 있습니다."
+                    : "분석을 생성하려면 AI 분석 또는 재분석을 눌러 주세요."}
+                </span>
+              )}
+              {projectSaveHint ? (
+                <span
+                  className={`ml-2 ${
+                    projectSaveHint.startsWith("저장됨") ? "text-emerald-800" : "text-red-700"
+                  }`}
+                >
+                  · {projectSaveHint}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHeatmapGuideOpen(true)}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              🎨 히트맵 기준
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadTableHtml()}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              표 HTML 저장
+            </button>
+          </div>
         </div>
-        {!totalRow && (
+      )}
+      {heatmapGuideOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setHeatmapGuideOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">🎨 히트맵 기준</h3>
+              <button
+                type="button"
+                onClick={() => setHeatmapGuideOpen(false)}
+                className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] leading-relaxed text-slate-500">
+              각 컬럼은 자기 데이터 분포의 5/95 퍼센타일로 스케일링되어 색 농도가 결정됩니다.
+              중간 구간(클린)은 배경 없음. 🔴 빨강 = 부정, 🔵 파랑 = 의문 (과도한 신호).
+            </p>
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="border border-slate-200 px-2 py-1.5 text-left">컬럼</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-left">🔴 부정 (빨강)</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-left">클린</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-left">🔵 의문 (파랑)</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-700">
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">매입 합계 YOY</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 100% (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">100 ~ 120%</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 120% (과매입)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(TGT) 매출성장율</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 100% (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">100 ~ 120%</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 120% (실현성 의심)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(BO) 매출성장율</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 100% (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">100 ~ 120%</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 120% (실현성 의심)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(TGT) 의류판매율 전년비</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 0pp (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">0 ~ +5pp</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; +5pp (과증가)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(TGT) 재고주수 전년비</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 0주 (증가)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">-10 ~ 0주 (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; -10주 (과감소)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(TGT) 기말재고 전년비(%)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 100% (증가)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">80 ~ 100% (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 80% (과감소)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">(BO) 기말재고 전년비(%)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&gt; 100% (증가)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">80 ~ 100% (감소)</td>
+                  <td className="border border-slate-200 px-2 py-1.5">&lt; 80% (과감소)</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 px-2 py-1.5 font-medium">TGT 🆚 BO 매출성장율</td>
+                  <td className="border border-slate-200 px-2 py-1.5" colSpan={3}>
+                    |TGT − BO| ≥ 10%p → 대리상명칭·매출성장율 셀을 버터색(`amber-50`)으로 하이라이트
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {!totalRow && (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-1.5 select-none">
+              <input
+                type="checkbox"
+                checked={showTagSalesCols}
+                onChange={e => setShowTagSalesCols(e.target.checked)}
+                className="h-3.5 w-3.5 accent-blue-600"
+              />
+              <span>당년매출(Tag) 열 표시</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 select-none">
+              <input
+                type="checkbox"
+                checked={showPurchaseAmtCols}
+                onChange={e => setShowPurchaseAmtCols(e.target.checked)}
+                className="h-3.5 w-3.5 accent-blue-600"
+              />
+              <span>매입 당년(금액) 열 표시</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 select-none">
+              <input
+                type="checkbox"
+                checked={showGrowthDetail}
+                onChange={e => setShowGrowthDetail(e.target.checked)}
+                className="h-3.5 w-3.5 accent-blue-600"
+              />
+              <span>매출성장률 의류·ACC 열 표시</span>
+            </label>
+          </div>
           <button
             type="button"
             onClick={() => downloadTableHtml()}
@@ -1293,17 +1533,33 @@ ${overviewTableSnapshotOuterHtml(el)}
           >
             표 HTML 저장
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <div ref={tableExportRef} className="w-max max-w-full min-w-0">
-      <div className="w-max max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-auto border-collapse text-right">
+      {totalRow && (
+        <style>{`
+          .ovw-sticky :where(thead > tr:nth-child(1)) > th {
+            position: sticky; top: 0; z-index: 40;
+          }
+          .ovw-sticky :where(thead > tr:nth-child(2)) > th {
+            position: sticky; top: 33px; z-index: 30;
+          }
+          .ovw-sticky :where(thead > tr:nth-child(3)) > th {
+            position: sticky; top: 61px; z-index: 30;
+          }
+          .ovw-sticky :where(tbody > tr:first-child) > td {
+            position: sticky; top: 89px; z-index: 20;
+          }
+        `}</style>
+      )}
+      <div className={`w-max max-w-full min-w-0 rounded-xl border border-slate-200 shadow-sm ${totalRow ? "max-h-[80vh] overflow-auto" : "overflow-x-auto"}`}>
+        <table className={`w-auto border-collapse text-right ${totalRow ? "ovw-sticky" : ""}`}>
           <thead>
             {/* 0단: 그룹 헤더 */}
             <tr className="bg-[#1a5aaa]">
               <th
                 rowSpan={3}
-                className="border-b border-white/20 border-r-4 border-r-white/80 p-0 text-left align-middle text-[10px] font-semibold uppercase tracking-wide text-white whitespace-nowrap"
+                className="border-b border-white/20 border-r-4 border-r-white/80 p-0 text-left align-middle text-[10px] font-semibold uppercase tracking-wide text-white whitespace-nowrap bg-[#1a5aaa]"
                 aria-sort={ariaSort(sortState, "name")}
               >
                 <button
@@ -1312,7 +1568,7 @@ ${overviewTableSnapshotOuterHtml(el)}
                   title={!sortState || sortState.col !== "name" ? "대리상명칭 가나다순 — 클릭: 내림차순" : sortState.dir === "desc" ? "내림차순 — 클릭: 오름차순" : "오름차순 — 클릭: 기본 순서로"}
                   className="flex w-full items-center justify-start gap-1 rounded-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                 >
-                  대리상명칭
+                  대리상명칭 ({displayMetrics.length}개)
                   <span className="opacity-90" aria-hidden>{sortIcon(sortState, "name")}</span>
                 </button>
               </th>
@@ -1324,15 +1580,15 @@ ${overviewTableSnapshotOuterHtml(el)}
               </th>
               <th
                 colSpan={tgtColSpan}
-                className={`${th} border-l-4 border-l-white/80 text-[11px]`}
+                className={`${th} border-l-4 border-l-white/80 text-[11px] bg-[#1a5aaa]`}
               >
                 (TGT) 재고&amp;손익
               </th>
               <th colSpan={boColSpan} className={`${th} border-l-4 border-l-white/80 text-[11px] bg-[#115e59]`}>
                 (BO.목표) 재고&amp;손익
               </th>
-              <th colSpan={5} className={`${th} border-l-4 border-l-white/80 text-[11px] bg-[#b45309]`}>
-                TGT vs BO목표
+              <th colSpan={4} className={`${th} border-l-4 border-l-white/80 text-[11px] bg-[#b45309]`}>
+                TGT <span className="mx-0.5 align-middle text-[16px] leading-none">🆚</span> BO목표
               </th>
             </tr>
             {/* 1단 헤더 */}
@@ -1379,7 +1635,7 @@ ${overviewTableSnapshotOuterHtml(el)}
               )}
               {/* TGT 컬럼들 */}
               {showTagSalesCols && (
-                <th rowSpan={2} className={`${thSub} align-middle border-l-4 border-l-white/80`}>
+                <th rowSpan={2} className={`${thSub} align-middle border-l-4 border-l-white/80 bg-[#2e75d0]`}>
                   <span className="flex flex-col items-center justify-center gap-0.5 leading-tight">
                     <span>당년매출</span>
                     <span className="text-[9px] font-normal opacity-90">(Tag)</span>
@@ -1388,7 +1644,7 @@ ${overviewTableSnapshotOuterHtml(el)}
               )}
               <th
                 colSpan={showGrowthDetail ? 3 : 1}
-                className={`${thSub} ${showTagSalesCols ? "border-l border-white/20" : "border-l-4 border-l-white/80"}`}
+                className={`${thSub} bg-[#2e75d0] ${showTagSalesCols ? "border-l border-white/20" : "border-l-4 border-l-white/80"}`}
               >
                 매출성장율
               </th>
@@ -1396,7 +1652,7 @@ ${overviewTableSnapshotOuterHtml(el)}
               <th colSpan={2} className={`${thSub} border-l border-white/20 bg-[#6b7280]`}>재고주수</th>
               <th
                 colSpan={3}
-                className="border-b border-white/15 border-l border-white/20 p-0 text-center text-[10px] font-medium text-white/80"
+                className="border-b border-white/15 border-l border-white/20 p-0 text-center text-[10px] font-medium text-white/80 bg-[#2e75d0]"
                 aria-sort={ariaSort(sortState, "ending")}
               >
                 <button
@@ -1411,7 +1667,7 @@ ${overviewTableSnapshotOuterHtml(el)}
               </th>
               <th
                 colSpan={3}
-                className="border-b border-white/15 border-l border-white/20 p-0 text-center text-[10px] font-medium text-white/80"
+                className="border-b border-white/15 border-l border-white/20 p-0 text-center text-[10px] font-medium text-white/80 bg-[#2e75d0]"
                 aria-sort={ariaSort(sortState, "opProfit")}
               >
                 <button
@@ -1437,8 +1693,7 @@ ${overviewTableSnapshotOuterHtml(el)}
               <th colSpan={2} className={`${thSub} border-l border-white/20 bg-[#0f766e]`}>기말재고</th>
               <th colSpan={3} className={`${thSub} border-l border-white/20 bg-[#0f766e]`}>영업이익</th>
               {/* TGT vs BO목표 비교 열 */}
-              <th rowSpan={2} className={`${thSub} align-middle border-l-4 border-l-white/80 bg-[#d97706]`}>매출YOY</th>
-              <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20 bg-[#d97706]`}>매출성장율</th>
+              <th rowSpan={2} className={`${thSub} align-middle border-l-4 border-l-white/80 bg-[#d97706]`}>매출성장율</th>
               <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20 bg-[#d97706]`}>기말재고</th>
               <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20 bg-[#d97706]`}>기말재고(%)</th>
               <th rowSpan={2} className={`${thSub} align-middle border-l border-white/20 bg-[#d97706]`}>영업이익</th>
@@ -1465,14 +1720,14 @@ ${overviewTableSnapshotOuterHtml(el)}
               {/* TGT 2단 — 매입 직후 첫 TGT 열은 TGT↔BO와 동일한 굵은 구분선 */}
               {showGrowthDetail && (
                 <th
-                  className={`${thSub} ${showTagSalesCols ? "border-l border-white/20" : "border-l-4 border-l-white/80"}`}
+                  className={`${thSub} bg-[#4a93e0] ${showTagSalesCols ? "border-l border-white/20" : "border-l-4 border-l-white/80"}`}
                 >
                   의류
                 </th>
               )}
-              {showGrowthDetail && <th className={thSub}>ACC</th>}
+              {showGrowthDetail && <th className={`${thSub} bg-[#4a93e0]`}>ACC</th>}
               <th
-                className={`${thSub} ${
+                className={`${thSub} bg-[#4a93e0] ${
                   showGrowthDetail
                     ? ""
                     : showTagSalesCols
@@ -1486,149 +1741,167 @@ ${overviewTableSnapshotOuterHtml(el)}
               <th className={`${thSub} bg-[#9ca3af]`}>전년비</th>
               <th className={`${thSub} border-l border-white/20 bg-[#9ca3af]`}>당년</th>
               <th className={`${thSub} bg-[#9ca3af]`}>전년비</th>
-              <th className={`${thSub} border-l border-white/20`}>당년</th>
-              <th className={thSub}>전년비</th>
-              <th className={thSub}>전년비(%)</th>
-              <th className={`${thSub} border-l border-white/20`}>당년</th>
-              <th className={thSub}>전년비</th>
-              <th className={thSub}>전년비(%)</th>
+              <th className={`${thSub} border-l border-white/20 bg-[#4a93e0]`}>당년</th>
+              <th className={`${thSub} bg-[#4a93e0]`}>전년비</th>
+              <th className={`${thSub} bg-[#4a93e0]`}>전년비(%)</th>
+              <th className={`${thSub} border-l border-white/20 bg-[#4a93e0]`}>당년</th>
+              <th className={`${thSub} bg-[#4a93e0]`}>전년비</th>
+              <th className={`${thSub} bg-[#4a93e0]`}>전년비(%)</th>
               {/* BO.목표 2단 */}
               <th className={`${thSub} border-l border-white/20 bg-[#0d9488]`}>당년</th>
-              <th className={`${thSub} bg-[#0d9488]`}>전년비</th>
+              <th className={`${thSub} bg-[#0d9488]`}>전년비(%)</th>
               <th className={`${thSub} border-l border-white/20 bg-[#0d9488]`}>당년</th>
               <th className={`${thSub} bg-[#0d9488]`}>전년비</th>
               <th className={`${thSub} bg-[#0d9488]`}>전년비(%)</th>
             </tr>
           </thead>
           <tbody>
-            {totalRow && (
-              <tr className="bg-slate-200/70 font-semibold">
-                <td className={`${tdLabel} bg-slate-200/70 border-r-4 border-r-slate-300`}>전체기준</td>
+            {totalRow && (() => {
+              const totalGrowthDiff =
+                totalRow.salesYoyTotal != null && totalBoGrowthRate != null
+                  ? totalRow.salesYoyTotal - totalBoGrowthRate
+                  : null;
+              const totalHighlight = totalGrowthDiff != null && Math.abs(totalGrowthDiff) >= 10;
+              const labelBg = totalHighlight ? "bg-amber-50" : "bg-slate-200";
+              const totalTd = `${td} bg-slate-200`;
+              return (
+              <tr className="bg-slate-200 font-semibold">
+                <td className={`${tdLabel} ${labelBg} border-r-4 border-r-slate-300`}>전체기준</td>
                 {/* 매입: 합계·의류·ACC — 당년(옵션) + YOY */}
                 {showPurchaseAmtCols ? (
                   <>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Num v={totalRow.purchase.sum} />
                     </td>
-                    <td className={`${td}`}><Yoy v={totalRow.purchase.sumYoy} /></td>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd}`}><Yoy v={totalRow.purchase.sumYoy} /></td>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Num v={totalRow.purchase.apparel} />
                     </td>
-                    <td className={`${td}`}><Yoy v={totalRow.purchase.apparelYoy} /></td>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd}`}><Yoy v={totalRow.purchase.apparelYoy} /></td>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Num v={totalRow.purchase.acc} />
                     </td>
-                    <td className={`${td}`}>
+                    <td className={`${totalTd}`}>
                       <Yoy v={totalRow.purchase.accYoy} />
                     </td>
                   </>
                 ) : (
                   <>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Yoy v={totalRow.purchase.sumYoy} />
                     </td>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Yoy v={totalRow.purchase.apparelYoy} />
                     </td>
-                    <td className={`${td} border-l border-slate-100`}>
+                    <td className={`${totalTd} border-l border-slate-100`}>
                       <Yoy v={totalRow.purchase.accYoy} />
                     </td>
                   </>
                 )}
                 {/* 당년매출 */}
                 {showTagSalesCols && (
-                  <td className={`${td} border-l-4 border-l-slate-300`}><Num v={totalRow.tgtSales} /></td>
+                  <td className={`${totalTd} border-l-4 border-l-slate-300`}><Num v={totalRow.tgtSales} /></td>
                 )}
                 {/* 매출성장율 의류 / ACC / 합계 */}
                 {showGrowthDetail && (
                   <td
-                    className={`${td} ${showTagSalesCols ? "border-l border-l-slate-300" : "border-l-4 border-l-slate-300"}`}
+                    className={`${totalTd} ${showTagSalesCols ? "border-l border-l-slate-300" : "border-l-4 border-l-slate-300"}`}
                   >
                     <Yoy v={totalRow.apparel.salesYoyPos} />
                   </td>
                 )}
-                {showGrowthDetail && <td className={td}><Yoy v={totalRow.acc.salesYoyPos} /></td>}
+                {showGrowthDetail && <td className={totalTd}><Yoy v={totalRow.acc.salesYoyPos} /></td>}
                 <td
-                  className={`${td} ${
+                  className={`${totalTd} ${
                     showGrowthDetail
                       ? ""
                       : showTagSalesCols
                         ? "border-l border-l-slate-300"
                         : "border-l-4 border-l-slate-300"
                   }`}
+                  style={{ backgroundColor: tgtSalesGrowthHeatBg(totalRow.salesYoyTotal) }}
                 >
                   <Yoy v={totalRow.salesYoyTotal} />
                 </td>
                 {/* 의류판매율 당년 / 전년비 */}
-                <td className={`${tdMuted} border-l border-l-slate-300`}>
+                <td className={`${totalTd} border-l border-l-slate-300`}>
                   {totalRow.apparel.sellThrough != null
                     ? `${totalRow.apparel.sellThrough.toFixed(1)}%`
                     : ""}
                 </td>
-                <td className={tdMuted}><DiffMuted v={totalSellThroughDiff} unit="pp" /></td>
+                <td className={totalTd} style={{ backgroundColor: sellThroughDiffHeatBg(totalSellThroughDiff) }}>
+                  <Diff v={totalSellThroughDiff} unit="pp" />
+                </td>
                 {/* 재고주수 당년 / 전년비 */}
-                <td className={`${tdMuted} border-l border-l-slate-300 ${totalRow.acc.weeks != null && totalRow.acc.weeks >= 30 ? "text-red-400" : totalRow.acc.weeks != null ? "text-violet-400" : ""}`}>
+                <td className={`${totalTd} border-l border-l-slate-300`}>
                   {totalRow.acc.weeks != null ? `${totalRow.acc.weeks.toFixed(1)}주` : ""}
                 </td>
-                <td className={tdMuted}><DiffMuted v={totalWeeksDiff} unit="주" /></td>
+                <td className={totalTd} style={{ backgroundColor: weeksDiffHeatBg(totalWeeksDiff) }}>
+                  <Diff v={totalWeeksDiff} unit="주" />
+                </td>
                 {/* 기말재고 당년 / 전년비(금액) / 전년비(%) */}
-                <td className={`${td} border-l border-l-slate-300`}>
+                <td className={`${totalTd} border-l border-l-slate-300`}>
                   <Num v={totalRow.apparel.ending + totalRow.acc.ending} />
                 </td>
-                <td className={td}>
+                <td className={totalTd}>
                   <DiffAmt v={totalRow2025
                     ? (totalRow.apparel.ending + totalRow.acc.ending) - (totalRow2025.apparel.ending + totalRow2025.acc.ending)
                     : null} />
                 </td>
-                <td className={td}><Yoy v={totalEndingYoy} /></td>
-                <td className={`${td} border-l border-l-slate-300 ${totalRow.opProfitTgt >= 0 ? "text-green-600" : "text-red-500"}`}>
+                <td className={totalTd} style={{ backgroundColor: tgtEndingYoyHeatBg(totalEndingYoy) }}>
+                  <Yoy v={totalEndingYoy} />
+                </td>
+                <td className={`${totalTd} border-l border-l-slate-300`}>
                   <Num v={totalRow.opProfitTgt} />
                 </td>
-                <td className={td}><DiffAmt v={totalOpProfitTgtDiff} /></td>
-                <td className={td}>
+                <td className={totalTd}><DiffAmt v={totalOpProfitTgtDiff} /></td>
+                <td className={totalTd}>
                   <Yoy v={totalRow2025 && totalRow2025.opProfit !== 0
                     ? (totalRow.opProfitTgt / totalRow2025.opProfit) * 100
                     : null} />
                 </td>
                 {/* BO.목표: 당년매출 / 매출성장율 / 기말재고(당년/전년비) / 영업이익(당년/전년비/전년비%) */}
-                {showTagSalesCols && <td className={`${td} border-l-4 border-l-slate-300`}><Num v={totalRow.boSales} /></td>}
-                <td className={`${td} ${showTagSalesCols ? "" : "border-l-4 border-l-slate-300"}`}>
+                {showTagSalesCols && <td className={`${totalTd} border-l-4 border-l-slate-300`}><Num v={totalRow.boSales} /></td>}
+                <td
+                  className={`${totalTd} ${showTagSalesCols ? "" : "border-l-4 border-l-slate-300"}`}
+                  style={{ backgroundColor: boSalesGrowthHeatBg(totalRow.prevSalesTotal > 0 ? (totalRow.boSales / totalRow.prevSalesTotal) * 100 : null) }}
+                >
                   <Yoy v={totalRow.prevSalesTotal > 0 ? (totalRow.boSales / totalRow.prevSalesTotal) * 100 : null} />
                 </td>
-                <td className={`${td} border-l border-l-slate-300`}><Num v={totalRow.boEnding} /></td>
-                <td className={td}>
+                <td className={`${totalTd} border-l border-l-slate-300`}><Num v={totalRow.boEnding} /></td>
+                <td
+                  className={totalTd}
+                  style={{ backgroundColor: boEndingYoyHeatBg(totalRow.boBase > 0 ? (totalRow.boEnding / totalRow.boBase) * 100 : null) }}
+                >
                   <Yoy v={totalRow.boBase > 0 ? (totalRow.boEnding / totalRow.boBase) * 100 : null} />
                 </td>
-                <td className={`${td} border-l border-l-slate-300 ${totalRow.opProfit >= 0 ? "text-green-600" : "text-red-500"}`}>
+                <td className={`${totalTd} border-l border-l-slate-300`}>
                   <Num v={totalRow.opProfit} />
                 </td>
-                <td className={td}><DiffAmt v={totalOpProfitDiff} /></td>
-                <td className={td}>
+                <td className={totalTd}><DiffAmt v={totalOpProfitDiff} /></td>
+                <td className={totalTd}>
                   <Yoy v={totalRow2025 && totalRow2025.opProfit !== 0
                     ? (totalRow.opProfit / totalRow2025.opProfit) * 100
                     : null} />
                 </td>
                 {/* TGT vs BO목표 비교 */}
-                <td className={`${td} border-l-4 border-l-slate-300`}>
-                  <Yoy v={totalRow.boSales > 0 ? (totalRow.tgtSales / totalRow.boSales) * 100 : null} />
+                <td className={`${totalTd} border-l-4 border-l-slate-300 ${totalHighlight ? "bg-amber-50" : ""}`}>
+                  <Diff v={totalGrowthDiff} unit="pp" />
                 </td>
-                <td className={td}>
-                  <Diff v={totalRow.salesYoyTotal != null && totalBoGrowthRate != null
-                    ? totalRow.salesYoyTotal - totalBoGrowthRate : null} unit="pp" />
-                </td>
-                <td className={td}>
+                <td className={totalTd}>
                   <DiffAmt v={(totalRow.apparel.ending + totalRow.acc.ending) - totalRow.boEnding} />
                 </td>
-                <td className={td}>
+                <td className={totalTd}>
                   {totalRow.boEnding > 0
                     ? `${Math.round((totalRow.apparel.ending + totalRow.acc.ending) / totalRow.boEnding * 100)}%`
                     : ""}
                 </td>
-                <td className={`${td} ${(totalRow.opProfitTgt - totalRow.opProfit) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                <td className={totalTd}>
                   <DiffAmt v={totalRow.opProfitTgt - totalRow.opProfit} />
                 </td>
               </tr>
-            )}
+              );
+            })()}
             {displayMetrics.map((m) => {
               const names = accountNameMap[m.account_id];
               const displayEn = names?.account_nm_en || m.account_nm_en;
@@ -1685,10 +1958,15 @@ ${overviewTableSnapshotOuterHtml(el)}
                      ((m.apparel.prevRetailSalesPos ?? 0) + (m.acc.prevRetailSalesPos ?? 0))) * 100
                   : null;
               const boGrowthRate = prevSales > 0 ? (boSales / prevSales) * 100 : null;
+              const rowGrowthDiff =
+                tgtGrowthRate != null && boGrowthRate != null
+                  ? tgtGrowthRate - boGrowthRate
+                  : null;
+              const rowHighlight = rowGrowthDiff != null && Math.abs(rowGrowthDiff) >= 10;
 
               return (
                 <tr key={m.account_id} className="hover:bg-slate-50/50">
-                  <td className={`${tdLabel} border-r-4 border-r-slate-300`}>
+                  <td className={`${tdLabel} border-r-4 border-r-slate-300 ${rowHighlight ? "bg-amber-50" : ""}`}>
                     <span className="cursor-default text-sm" title={displayEn || undefined}>
                       ({m.account_id}) {displayKr || displayEn}
                     </span>
@@ -1699,7 +1977,12 @@ ${overviewTableSnapshotOuterHtml(el)}
                       <td className={`${td} border-l border-slate-100`}>
                         <Num v={purchaseSumRow} />
                       </td>
-                      <td className={`${td}`}><Yoy v={purchaseSumYoyRow} /></td>
+                      <td
+                        className={td}
+                        style={{ backgroundColor: purchaseSumYoyHeatBg(purchaseSumYoyRow) }}
+                      >
+                        <Yoy v={purchaseSumYoyRow} />
+                      </td>
                       <td className={`${td} border-l border-slate-100`}>
                         <Num v={m.apparel.purchase} />
                       </td>
@@ -1713,7 +1996,10 @@ ${overviewTableSnapshotOuterHtml(el)}
                     </>
                   ) : (
                     <>
-                      <td className={`${td} border-l border-slate-100`}>
+                      <td
+                        className={`${td} border-l border-slate-100`}
+                        style={{ backgroundColor: purchaseSumYoyHeatBg(purchaseSumYoyRow) }}
+                      >
                         <Yoy v={purchaseSumYoyRow} />
                       </td>
                       <td className={`${td} border-l border-slate-100`}>
@@ -1745,55 +2031,68 @@ ${overviewTableSnapshotOuterHtml(el)}
                           ? "border-l border-l-slate-200"
                           : "border-l-4 border-l-slate-300"
                     }`}
+                    style={{ backgroundColor: tgtSalesGrowthHeatBg(tgtGrowthRate) }}
                   >
                     <Yoy v={tgtGrowthRate} />
                   </td>
                   {/* 의류판매율 당년 / 전년비 */}
-                  <td className={`${tdMuted} border-l border-l-slate-200`}>
+                  <td className={`${td} border-l border-l-slate-200`}>
                     {m.apparel.sellThrough != null
                       ? `${m.apparel.sellThrough.toFixed(1)}%`
                       : ""}
                   </td>
-                  <td className={tdMuted}><DiffMuted v={sellThroughDiff} unit="pp" /></td>
+                  <td className={td} style={{ backgroundColor: sellThroughDiffHeatBg(sellThroughDiff) }}>
+                    <Diff v={sellThroughDiff} unit="pp" />
+                  </td>
                   {/* 재고주수 당년 / 전년비 */}
-                  <td className={`${tdMuted} border-l border-l-slate-200 ${m.acc.weeks != null && m.acc.weeks >= 30 ? "text-red-300 font-medium" : m.acc.weeks != null ? "text-violet-300" : ""}`}>
+                  <td className={`${td} border-l border-l-slate-200`}>
                     {m.acc.weeks != null ? `${m.acc.weeks.toFixed(1)}주` : ""}
                   </td>
-                  <td className={tdMuted}><DiffMuted v={weeksDiff} unit="주" /></td>
+                  <td className={td} style={{ backgroundColor: weeksDiffHeatBg(weeksDiff) }}>
+                    <Diff v={weeksDiff} unit="주" />
+                  </td>
                   {/* 기말재고 당년 / 전년비(금액) / 전년비(%) */}
                   <td className={`${td} border-l border-l-slate-200`}><Num v={curr26Ending} /></td>
                   <td className={td}><DiffAmt v={prev25Ending > 0 ? curr26Ending - prev25Ending : null} /></td>
-                  <td className={td}><Yoy v={endingYoy} /></td>
-                  <td className={`${td} border-l border-l-slate-200 ${opTgt2026 !== null && opTgt2026 >= 0 ? "text-green-600" : opTgt2026 !== null ? "text-red-500" : ""}`}>
+                  <td className={td} style={{ backgroundColor: tgtEndingYoyHeatBg(endingYoy) }}>
+                    <Yoy v={endingYoy} />
+                  </td>
+                  <td className={`${td} border-l border-l-slate-200`}>
                     {opTgt2026 !== null ? <Num v={opTgt2026} /> : ""}
                   </td>
                   <td className={td}><DiffAmt v={opTgtDiff} /></td>
                   <td className={td}><Yoy v={opTgtYoy} /></td>
                   {/* BO.목표: 당년매출 / 매출성장율 / 기말재고 / 영업이익 */}
                   {showTagSalesCols && <td className={`${td} border-l-4 border-l-slate-300`}><Num v={boSalesMap.get(m.account_id) ?? 0} /></td>}
-                  <td className={`${td} ${showTagSalesCols ? "" : "border-l-4 border-l-slate-300"}`}>
+                  <td
+                    className={`${td} ${showTagSalesCols ? "" : "border-l-4 border-l-slate-300"}`}
+                    style={{ backgroundColor: boSalesGrowthHeatBg((prevSalesMap.get(m.account_id) ?? 0) > 0
+                      ? (boSalesMap.get(m.account_id) ?? 0) / (prevSalesMap.get(m.account_id) ?? 1) * 100
+                      : null) }}
+                  >
                     <Yoy v={(prevSalesMap.get(m.account_id) ?? 0) > 0
                       ? (boSalesMap.get(m.account_id) ?? 0) / (prevSalesMap.get(m.account_id) ?? 1) * 100
                       : null} />
                   </td>
                   <td className={`${td} border-l border-l-slate-200`}><Num v={boEndingMap.get(m.account_id) ?? 0} /></td>
-                  <td className={td}>
+                  <td
+                    className={td}
+                    style={{ backgroundColor: boEndingYoyHeatBg((boBaseMap.get(m.account_id) ?? 0) > 0
+                      ? (boEndingMap.get(m.account_id) ?? 0) / (boBaseMap.get(m.account_id) ?? 1) * 100
+                      : null) }}
+                  >
                     <Yoy v={(boBaseMap.get(m.account_id) ?? 0) > 0
                       ? (boEndingMap.get(m.account_id) ?? 0) / (boBaseMap.get(m.account_id) ?? 1) * 100
                       : null} />
                   </td>
-                  <td className={`${td} border-l border-l-slate-200 ${op2026 !== null && op2026 >= 0 ? "text-green-600" : op2026 !== null ? "text-red-500" : ""}`}>
+                  <td className={`${td} border-l border-l-slate-200`}>
                     {op2026 !== null ? <Num v={op2026} /> : ""}
                   </td>
                   <td className={td}><DiffAmt v={opDiff} /></td>
                   <td className={td}><Yoy v={opYoy} /></td>
                   {/* TGT vs BO목표 비교 */}
-                  <td className={`${td} border-l-4 border-l-slate-300`}>
-                    <Yoy v={boSales > 0 ? (tgtSales / boSales) * 100 : null} />
-                  </td>
-                  <td className={td}>
-                    <Diff v={tgtGrowthRate != null && boGrowthRate != null
-                      ? tgtGrowthRate - boGrowthRate : null} unit="pp" />
+                  <td className={`${td} border-l-4 border-l-slate-300 ${rowHighlight ? "bg-amber-50" : ""}`}>
+                    <Diff v={rowGrowthDiff} unit="pp" />
                   </td>
                   <td className={td}>
                     <DiffAmt v={curr26Ending - (boEndingMap.get(m.account_id) ?? 0)} />
