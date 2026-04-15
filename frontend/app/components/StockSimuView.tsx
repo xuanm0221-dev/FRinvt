@@ -266,9 +266,9 @@ export default function StockSimuView({
             </h2>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+          <div className="overflow-auto rounded-xl border border-slate-200 shadow-sm max-h-[calc(100vh-260px)]">
             <table className="w-full min-w-[560px] border-collapse text-right text-sm">
-              <thead>
+              <thead className="sticky top-0 z-20">
                 <tr className="border-b border-[#1e3a5f]/20 bg-[linear-gradient(180deg,#2d5a8e_0%,#245089_100%)] text-xs font-semibold text-white">
                   <th className="px-3 py-2.5 text-left">대리상</th>
                   <th className="px-3 py-2.5">기초재고</th>
@@ -307,8 +307,8 @@ export default function StockSimuView({
                 </tr>
               </thead>
               <tbody>
-                {/* 브랜드 합계 행 — 헤더 바로 아래 */}
-                <tr className="border-b-2 border-slate-300 bg-slate-100/60 font-semibold">
+                {/* 브랜드 합계 행 — 헤더 바로 아래 (스크롤 시 고정) */}
+                <tr className="border-b-2 border-slate-300 bg-slate-100 font-semibold sticky top-[37px] z-[15] [&>td]:bg-slate-100 [&>td]:sticky [&>td]:top-[37px] [&>td]:z-[15]">
                   <td className="px-3 py-2.5 text-left text-slate-700">합계</td>
                   <td className="px-3 py-2.5 tabular-nums text-slate-800">
                     {fmtCell(totals.base)}
