@@ -26,6 +26,12 @@ interface Props {
   retailStore2026?: RetailStoreData | null;
   /** 재고자산(TGT) 시뮬레이션 기준 대리상별 Tag: brand → accountId → apparel.sales+acc.sales(Tag) */
   tgtRetailMap?: Record<string, Record<string, number>>;
+  /** 대리상별 재고 (annual/annualTgt 모드에서 재고증감·OCF 컬럼용) */
+  dealerStockMap?: {
+    prevYearEnding: Record<string, Record<string, number>>;
+    tgtEnding: Record<string, Record<string, number>>;
+    boTargetEnding: Record<string, Record<string, number>>;
+  };
   selectedBrand?: BrandKey;
   onSelectedBrandChange?: (b: BrandKey) => void;
 }
@@ -142,7 +148,12 @@ const PL_LEGEND_DIRECT_COST_FORMULA =
   "급여 + 성과급 + 보험/공적금 + 임차(max(미니멈,변동)) + 감가상각비 + 기타(마케팅·포장·지급수수료·others)";
 
 /** 직접비 블록 열 수 — 본문 DirectCostCells·thead directSpan·TotalRow 동기화 */
-function countDirectCostColumns(variant: PLTableVariant, openGroups: OpenGroups): number {
+function countDirectCostColumns(
+  variant: PLTableVariant,
+  openGroups: OpenGroups,
+  directDetailHidden = false,
+): number {
+  if (directDetailHidden) return 2; // 직접비합계, 비용률만
   let n = 2 + 1; // 직접비합계, 비용률, 인건비(합계)
   if (openGroups.labor) n += 2;
   if (variant === "store" || (variant === "dealer" && openGroups.labor)) n += 1; // 인원수
@@ -183,7 +194,11 @@ function plDirectSubgroupsAllCollapsed(openGroups: OpenGroups): boolean {
 }
 
 /** 대리상 PL: `DirectCostCells` 직전까지 열 개수(첫 열 포함), 본문·헤더와 동기화 */
-function countDealerPlLeftColumns(isActualMode: boolean, dealerCogsRateOpen: boolean): number {
+function countDealerPlLeftColumns(
+  isActualMode: boolean,
+  dealerCogsRateOpen: boolean,
+  isAnnualMode = false,
+): number {
   return (
     1 + // 대리상명
     1 + // Tag
@@ -193,7 +208,8 @@ function countDealerPlLeftColumns(isActualMode: boolean, dealerCogsRateOpen: boo
     1 + // 매출원가
     1 + // 매출이익
     1 + // 매출이익률
-    2 // 영업이익 · 영업이익률
+    2 + // 영업이익 · 영업이익률
+    (isAnnualMode ? 2 : 0) // 재고증감 · OCF
   );
 }
 
@@ -230,6 +246,8 @@ function PlTableColGroup({
   dealerCogsRateOpen = false,
   storeTagDetailOpen = false,
   storeCogsRateOpen = false,
+  isAnnualMode = false,
+  directDetailHidden = false,
 }: {
   variant: PLTableVariant;
   openGroups: OpenGroups;
@@ -237,12 +255,14 @@ function PlTableColGroup({
   dealerCogsRateOpen?: boolean;
   storeTagDetailOpen?: boolean;
   storeCogsRateOpen?: boolean;
+  isAnnualMode?: boolean;
+  directDetailHidden?: boolean;
 }) {
   const leftCols =
     variant === "dealer"
-      ? countDealerPlLeftColumns(isActualMode, dealerCogsRateOpen)
+      ? countDealerPlLeftColumns(isActualMode, dealerCogsRateOpen, isAnnualMode)
       : countStorePlLeftColumns(isActualMode, storeTagDetailOpen, storeCogsRateOpen);
-  const directSpan = countDirectCostColumns(variant, openGroups);
+  const directSpan = countDirectCostColumns(variant, openGroups, directDetailHidden);
   const equalDetail = plDirectSubgroupsAllCollapsed(openGroups);
   const detailWidth = "6.25rem";
   const nameColMin =
@@ -316,7 +336,7 @@ type DropdownOption = { value: MonthOption; label: string; isActual?: boolean; i
 
 function buildDropdownOptions(actualMonths: number): DropdownOption[] {
   return [
-    { value: "annual" as MonthOption, label: "26년 연간목표" },
+    { value: "annual" as MonthOption, label: "2026 BO연간목표" },
     { value: "annualTgt" as MonthOption, label: "26년 연간TGT" },
     ...MONTHS.map((m) => ({ value: { kind: "target" as const, m }, label: plMonthTargetLabel(m) })),
     ...Array.from({ length: actualMonths }, (_, i) => ({
@@ -463,7 +483,7 @@ function buildPlKpiLegendItems(ctx: PlKpiLegendCtx): ReactNode[] {
       <span className="font-semibold text-slate-700">인건비</span> = 급여 + 성과급. 급여 = 평균급여×인원({bonusScope}
       ). 성과급 = 해당 월 리테일×bonus%.{" "}
       <span className="font-semibold text-slate-700">평균인건비</span>·인당급여 KPI = (급여+성과급)÷인원 → 천위안
-      표시; 26년 연간목표일 때 ÷{PL_CALC.annualMonthsForAvgLabor}(월 환산).
+      표시; 2026 BO연간목표일 때 ÷{PL_CALC.annualMonthsForAvgLabor}(월 환산).
     </li>,
     <li key="ins">
       <span className="font-semibold text-slate-700">보험/공적금</span> = (급여+성과급) × 보험율.
@@ -878,6 +898,8 @@ interface DirectCostCellsProps {
   activeStoreCount?: number;
   /** 대리상: 인건비 접힘 시 인원수 열 숨김 — store는 항상 true */
   showHeadcountCol?: boolean;
+  /** annual 모드 직접비상세 마스터 접힘 — true면 직접비합계·비용률만 출력 */
+  directDetailHidden?: boolean;
 }
 
 function DirectCostCells({
@@ -900,6 +922,7 @@ function DirectCostCells({
   othersLine,
   activeStoreCount,
   showHeadcountCol = true,
+  directDetailHidden = false,
 }: DirectCostCellsProps) {
   const cls = (v: number) => (v === 0 ? "text-slate-300" : "text-slate-700");
   const clsSub = (v: number) => (v === 0 ? "text-slate-300" : "text-slate-600");
@@ -914,6 +937,16 @@ function DirectCostCells({
     <td className={`px-3 py-2 ${clsSub(v)}`}>{f(v)}</td>
   );
 
+  if (directDetailHidden) {
+    return (
+      <>
+        <td className={`px-3 py-2 border-l border-slate-200 ${cls(directCost)}`}>{f(directCost)}</td>
+        <td className={`px-3 py-2 tabular-nums ${cr === null ? "text-slate-300" : "text-slate-600"}`}>
+          {cr === null ? "—" : fmtRate(cr)}
+        </td>
+      </>
+    );
+  }
   return (
     <>
       <td className={`px-3 py-2 border-l border-slate-200 ${cls(directCost)}`}>{f(directCost)}</td>
@@ -986,6 +1019,9 @@ function PLTableHead({
   onStoreTagDetailToggle,
   storeCogsRateOpen = false,
   onStoreCogsRateToggle,
+  isAnnualMode = false,
+  directDetailHidden = false,
+  onDirectDetailToggle,
 }: {
   firstColLabel: string;
   variant: PLTableVariant;
@@ -1010,9 +1046,14 @@ function PLTableHead({
   /** 실적 매장 모달: 가중출고율 열 표시 */
   storeCogsRateOpen?: boolean;
   onStoreCogsRateToggle?: () => void;
+  /** annual / annualTgt 모드 — 재고증감·OCF 컬럼 표시 */
+  isAnnualMode?: boolean;
+  /** annual 모드에서 직접비 상세 그룹 접힘 */
+  directDetailHidden?: boolean;
+  onDirectDetailToggle?: () => void;
 }) {
-  const directSpan = countDirectCostColumns(variant, openGroups);
-  const directSpanDetail = directSpan - 2;
+  const directSpan = countDirectCostColumns(variant, openGroups, directDetailHidden);
+  const directSpanDetail = directDetailHidden ? 0 : directSpan - 2;
   const showHeadcountCol = variant === "store" || (variant === "dealer" && openGroups.labor);
   const showCogsRateCol =
     variant === "dealer"
@@ -1121,18 +1162,48 @@ function PLTableHead({
         >
           영업이익
         </th>
+        {isAnnualMode && (
+          <th
+            colSpan={2}
+            className="px-3 py-1.5 text-center text-[10px] font-semibold text-emerald-200 border-l border-white/20"
+          >
+            현금흐름
+          </th>
+        )}
         <th
           colSpan={2}
           className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
         >
           직접비
+          {isAnnualMode && directDetailHidden && onDirectDetailToggle && (
+            <button
+              type="button"
+              onClick={onDirectDetailToggle}
+              className="ml-1 opacity-70 hover:opacity-100 text-[9px] leading-none"
+              title="직접비 상세 펼치기"
+            >
+              ▶
+            </button>
+          )}
         </th>
-        <th
-          colSpan={directSpanDetail}
-          className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
-        >
-          직접비 상세
-        </th>
+        {directSpanDetail > 0 && (
+          <th
+            colSpan={directSpanDetail}
+            className="px-3 py-1.5 text-center text-[10px] font-semibold text-sky-200 border-l border-white/20"
+          >
+            직접비 상세
+            {isAnnualMode && onDirectDetailToggle && (
+              <button
+                type="button"
+                onClick={onDirectDetailToggle}
+                className="ml-1 opacity-70 hover:opacity-100 text-[9px] leading-none"
+                title="접기"
+              >
+                ▼
+              </button>
+            )}
+          </th>
+        )}
       </tr>
       <tr className="bg-sky-100 border-b border-slate-200">
         <th
@@ -1247,15 +1318,26 @@ function PLTableHead({
           영업이익
         </th>
         <th className="px-3 py-2.5 text-xs font-bold text-[#1e3a5f] whitespace-nowrap">영업이익률</th>
+        {isAnnualMode && (
+          <>
+            <th className="px-3 py-2.5 text-xs font-semibold text-emerald-700 whitespace-nowrap border-l border-slate-200">
+              재고증감(전년비)
+            </th>
+            <th className="px-3 py-2.5 text-xs font-bold text-emerald-700 whitespace-nowrap">OCF</th>
+          </>
+        )}
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap border-l border-slate-200">
           직접비합계
         </th>
         <th className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">비용률</th>
+        {!directDetailHidden && (
         <th
           className={`px-3 py-2.5 text-xs whitespace-nowrap cursor-pointer select-none border-l border-slate-200 ${L1_HEAD}`}
         >
           인건비{toggleBtn("labor", openGroups.labor)}
         </th>
+        )}
+        {!directDetailHidden && (<>
         {openGroups.labor &&
           (variant === "store" ? (
             <>
@@ -1332,6 +1414,7 @@ function PLTableHead({
               <th className={`px-3 py-2.5 text-xs font-medium whitespace-nowrap ${SUB_HEAD}`}>(others)</th>
             </>
           ))}
+        </>)}
       </tr>
     </thead>
   );
@@ -1368,6 +1451,9 @@ function TotalRow({
   dealerCogsRateOpen = false,
   storeTagDetailOpen = false,
   storeCogsRateOpen = false,
+  isAnnualMode = false,
+  directDetailHidden = false,
+  stockChange = 0,
 }: {
   totals: TotalRowTotals;
   variant: PLTableVariant;
@@ -1377,6 +1463,10 @@ function TotalRow({
   /** 대리상 합계 행: 표에 포함된 활성 매장 수 합 */
   dealerTotalActiveStores?: number;
   dealerCogsRateOpen?: boolean;
+  isAnnualMode?: boolean;
+  directDetailHidden?: boolean;
+  /** annual 모드: 합계 재고증감(전년비) */
+  stockChange?: number;
   storeTagDetailOpen?: boolean;
   storeCogsRateOpen?: boolean;
 }) {
@@ -1461,12 +1551,31 @@ function TotalRow({
           ? fmtRate((totals.operatingProfit * PL_CALC.retailVatFactor) / totals.retail)
           : "—"}
       </td>
+      {isAnnualMode && (
+        <>
+          <td
+            className={`px-3 py-2.5 font-bold border-l border-slate-200 ${
+              stockChange >= 0 ? "text-emerald-700" : "text-red-700"
+            }`}
+          >
+            {f(stockChange)}
+          </td>
+          <td
+            className={`px-3 py-2.5 font-bold ${
+              totals.operatingProfit + stockChange >= 0 ? "text-emerald-700" : "text-red-700"
+            }`}
+          >
+            {f(totals.operatingProfit + stockChange)}
+          </td>
+        </>
+      )}
       <td className={`px-3 py-2.5 border-l border-slate-200 ${c(totals.directCost)}`}>{f(totals.directCost)}</td>
       <td
         className={`px-3 py-2.5 tabular-nums ${cr === null ? "text-slate-400" : "text-slate-800"}`}
       >
         {cr === null ? "—" : fmtRate(cr)}
       </td>
+      {!directDetailHidden && (<>
       <td className={`px-3 py-2.5 border-l border-slate-200 text-slate-800 ${c(labor)}`}>{f(labor)}</td>
       {openGroups.labor && (
         <>
@@ -1517,6 +1626,7 @@ function TotalRow({
           <td className={`px-3 py-2.5 ${cSub(totals.othersLine)}`}>{f(totals.othersLine)}</td>
         </>
       )}
+      </>)}
     </tr>
   );
 }
@@ -2121,7 +2231,7 @@ function StoreModal({
 
   const monthLabel =
     selectedMonth === "annual"
-      ? "26년 연간목표"
+      ? "2026 BO연간목표"
       : selectedMonth === "annualTgt"
       ? "26년 연간TGT"
       : isTargetMonth(selectedMonth)
@@ -2488,6 +2598,7 @@ export default function PLView({
   retailYoy2025Map = null,
   retailStore2026 = null,
   tgtRetailMap = {},
+  dealerStockMap,
   selectedBrand: selectedBrandProp,
   onSelectedBrandChange,
 }: Props) {
@@ -2496,6 +2607,10 @@ export default function PLView({
   const [calcLogicOpen, setCalcLogicOpen] = useState(false);
   const [dealerOpenGroups, setDealerOpenGroups] = useState<OpenGroups>(DEFAULT_OPEN_GROUPS);
   const [dealerCogsRateOpen, setDealerCogsRateOpen] = useState(false);
+  /** annual/annualTgt 모드에서 직접비 상세 컬럼 그룹 표시 여부 (기본 접힘) */
+  const [directDetailOpen, setDirectDetailOpen] = useState(false);
+  const isAnnualMode = selectedMonth === "annual" || selectedMonth === "annualTgt";
+  const directDetailHidden = isAnnualMode && !directDetailOpen;
   const toggleDealerGroup = useCallback(
     (key: keyof OpenGroups) => setDealerOpenGroups((prev) => ({ ...prev, [key]: !prev[key] })),
     [],
@@ -2524,7 +2639,7 @@ export default function PLView({
     : brands[0] || "";
 
   const plMonthLabel = useMemo(() => {
-    if (selectedMonth === "annual") return "26년 연간목표";
+    if (selectedMonth === "annual") return "2026 BO연간목표";
     if (selectedMonth === "annualTgt") return "26년 연간TGT";
     if (selectedMonth === "annual25") return "25년 연간실적";
     if (isTargetMonth(selectedMonth)) return plMonthTargetLabel(selectedMonth.m);
@@ -2900,6 +3015,25 @@ export default function PLView({
     );
   }, [rows, isActual, selectedMonth, actualStoreMap, storeRetailMap, activeBrand]);
 
+  /** 대리상별 재고 lookup — annual=BO목표 ending, annualTgt=TGT ending */
+  const stockLookup = useCallback(
+    (accountId: string): { curr: number; prev: number; change: number } => {
+      if (!isAnnualMode || !dealerStockMap) return { curr: 0, prev: 0, change: 0 };
+      const prev = dealerStockMap.prevYearEnding[activeBrand]?.[accountId] ?? 0;
+      const curr =
+        selectedMonth === "annualTgt"
+          ? dealerStockMap.tgtEnding[activeBrand]?.[accountId] ?? 0
+          : dealerStockMap.boTargetEnding[activeBrand]?.[accountId] ?? 0;
+      return { curr, prev, change: curr - prev };
+    },
+    [isAnnualMode, dealerStockMap, activeBrand, selectedMonth],
+  );
+
+  const totalStockChange = useMemo(
+    () => (isAnnualMode ? rows.reduce((s, r) => s + stockLookup(r.accountId).change, 0) : 0),
+    [isAnnualMode, rows, stockLookup],
+  );
+
   return (
     <>
       <div className="space-y-4">
@@ -2913,6 +3047,25 @@ export default function PLView({
             >
               계산로직
             </button>
+            {(
+              [
+                { key: "annual", label: "2026 BO연간목표", activeCls: "border-slate-400 bg-slate-100 text-slate-800", idleCls: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300" },
+                { key: "annualTgt", label: "2026년 연간TGT", activeCls: "border-slate-400 bg-slate-100 text-slate-800", idleCls: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300" },
+                { key: "annual25", label: "2025년 연간실적", activeCls: "border-purple-400 bg-purple-100 text-purple-800", idleCls: "border-purple-200 bg-white text-purple-700 hover:bg-purple-50 hover:border-purple-300" },
+              ] as const
+            ).map((b) => {
+              const active = selectedMonth === b.key;
+              return (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => setSelectedMonth(b.key)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors ${active ? b.activeCls : b.idleCls}`}
+                >
+                  {b.label}
+                </button>
+              );
+            })}
           </div>
           <select
             value={optionKey(selectedMonth)}
@@ -2968,6 +3121,8 @@ export default function PLView({
               openGroups={dealerOpenGroups}
               isActualMode={isActual}
               dealerCogsRateOpen={dealerCogsRateOpen}
+              isAnnualMode={isAnnualMode}
+              directDetailHidden={directDetailHidden}
             />
             <PLTableHead
               firstColLabel="대리상명"
@@ -2982,6 +3137,9 @@ export default function PLView({
               dealerCogsRateOpen={dealerCogsRateOpen}
               onDealerCogsRateToggle={() => setDealerCogsRateOpen((v) => !v)}
               isActualMode={isActual}
+              isAnnualMode={isAnnualMode}
+              directDetailHidden={directDetailHidden}
+              onDirectDetailToggle={() => setDirectDetailOpen((v) => !v)}
             />
             <tbody className="divide-y divide-slate-200">
               {rows.length > 0 && (
@@ -2993,6 +3151,9 @@ export default function PLView({
                   dealerTotalActiveStores={dealerTotalActiveStores}
                   dealerCogsRateOpen={dealerCogsRateOpen}
                   isActualMode={isActual}
+                  isAnnualMode={isAnnualMode}
+                  directDetailHidden={directDetailHidden}
+                  stockChange={totalStockChange}
                 />
               )}
               {rows.map((row, i) => {
@@ -3089,6 +3250,28 @@ export default function PLView({
                       ? fmtRate((row.operatingProfit * PL_CALC.retailVatFactor) / row.retail)
                       : "—"}
                     </td>
+                    {isAnnualMode && (() => {
+                      const { change } = stockLookup(row.accountId);
+                      const ocf = row.operatingProfit + change;
+                      return (
+                        <>
+                          <td
+                            className={`px-3 py-2 font-semibold border-l border-slate-200 ${
+                              change >= 0 ? "text-emerald-700" : "text-red-600"
+                            }`}
+                          >
+                            {fmt(change)}
+                          </td>
+                          <td
+                            className={`px-3 py-2 font-semibold ${
+                              ocf >= 0 ? "text-emerald-700" : "text-red-600"
+                            }`}
+                          >
+                            {fmt(ocf)}
+                          </td>
+                        </>
+                      );
+                    })()}
                     <DirectCostCells
                       variant="dealer"
                       selectedMonth={selectedMonth}
@@ -3107,6 +3290,7 @@ export default function PLView({
                       othersLine={row.othersLine}
                       activeStoreCount={activeStoreCount}
                       showHeadcountCol={dealerOpenGroups.labor}
+                      directDetailHidden={directDetailHidden}
                     />
                   </tr>
                 );

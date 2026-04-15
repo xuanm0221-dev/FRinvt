@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { BrandKey, BRAND_ORDER, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
+import { BrandKey, BRAND_ORDER, MONTHS, StockData, InboundData, RetailData, AppOtbData, StoreRetailMap, StoreDirectCostMap, RetailStoreData } from "../lib/types";
 import StockView, { type AccountNameMap, DEFAULT_GROWTH, blendRetail } from "./components/StockView";
 import OverviewScenario1Table from "./components/OverviewScenario1Table";
 import StockSimuView from "./components/StockSimuView";
@@ -74,27 +74,65 @@ export default function DashboardClient({
       .catch(() => {});
   }, []);
 
-  /** 재고자산(TGT) 시뮬레이션 기준 대리상별 Tag = apparel.sales + acc.sales(Tag) */
-  const tgtRetailMap = useMemo((): Record<string, Record<string, number>> => {
-    if (!data2026) return {};
+  /** 재고자산(TGT)·BO목표 시뮬레이션 — 대리상별 Tag·재고 */
+  const { tgtRetailMap, dealerStockMap } = useMemo(() => {
+    if (!data2026) {
+      return {
+        tgtRetailMap: {} as Record<string, Record<string, number>>,
+        dealerStockMap: {
+          prevYearEnding: {} as Record<string, Record<string, number>>,
+          tgtEnding: {} as Record<string, Record<string, number>>,
+          boTargetEnding: {} as Record<string, Record<string, number>>,
+        },
+      };
+    }
     const blended = retail2026 ? blendRetail(retail2026, growthRates, retailDw2025) : null;
     const retailForCalc = blended?.data ?? retail2026;
-    const result: Record<string, Record<string, number>> = {};
+    const tgtMap: Record<string, Record<string, number>> = {};
+    const prevEndMap: Record<string, Record<string, number>> = {};
+    const tgtEndMap: Record<string, Record<string, number>> = {};
+    const boEndMap: Record<string, Record<string, number>> = {};
     for (const brand of BRAND_ORDER) {
       const merged = mergeAccounts(brand, data2026, retailForCalc, inbound2026, appOtb2026);
-      const map: Record<string, number> = {};
+      const tgt: Record<string, number> = {};
+      const prevEnd: Record<string, number> = {};
+      const tgtEnd: Record<string, number> = {};
+      const boEnd: Record<string, number> = {};
       for (const acc of merged) {
         const m = computeAccountMetrics(
           acc, brand, data2026, data2025, retailForCalc, retailDw2025,
           inbound2026, inbound2025, appOtb2026, "2026",
           targetWeeks, sellThroughRates, retailDw2025,
         );
-        map[acc.account_id] = m.apparel.sales + m.acc.sales;
+        const m25 = data2025
+          ? computeAccountMetrics(
+              acc, brand, data2025, null, retailDw2025, null,
+              inbound2025 ?? null, null, null, "2025",
+              targetWeeks, sellThroughRates,
+            )
+          : null;
+        tgt[acc.account_id] = m.apparel.sales + m.acc.sales;
+        const base25 = m25 ? m25.apparel.ending + m25.acc.ending : 0;
+        prevEnd[acc.account_id] = base25;
+        tgtEnd[acc.account_id] = m.apparel.ending + m.acc.ending;
+        const stores = storeRetailMap?.[brand]?.[acc.account_id] ?? [];
+        const boSales = stores.reduce((s, st) => {
+          const retail = MONTHS.reduce((r, mm) => r + (st.months[mm] ?? 0), 0);
+          const denom = 1 - st.discountRate;
+          return s + (denom > 0 ? retail / denom : retail);
+        }, 0);
+        boEnd[acc.account_id] = base25 + m.apparel.purchase + m.acc.purchase - boSales;
       }
-      result[brand] = map;
+      tgtMap[brand] = tgt;
+      prevEndMap[brand] = prevEnd;
+      tgtEndMap[brand] = tgtEnd;
+      boEndMap[brand] = boEnd;
     }
-    return result;
-  }, [data2025, data2026, retail2026, retailDw2025, inbound2025, inbound2026, appOtb2026, growthRates, targetWeeks, sellThroughRates]);
+    return {
+      tgtRetailMap: tgtMap,
+      dealerStockMap: { prevYearEnding: prevEndMap, tgtEnding: tgtEndMap, boTargetEnding: boEndMap },
+    };
+  }, [data2025, data2026, retail2026, retailDw2025, inbound2025, inbound2026, appOtb2026, growthRates, targetWeeks, sellThroughRates, storeRetailMap]);
 
   return (
     <div>
@@ -216,6 +254,7 @@ export default function DashboardClient({
             retailStore2026={retailStore2026}
             actualCogsRateMap={actualCogsRateMap}
             tgtRetailMap={tgtRetailMap}
+            dealerStockMap={dealerStockMap}
             selectedBrand={selectedBrand}
             onSelectedBrandChange={setSelectedBrand}
           />
