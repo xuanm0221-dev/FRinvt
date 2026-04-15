@@ -1165,7 +1165,19 @@ function PLTableHead({
         {isAnnualMode && (
           <th
             colSpan={2}
-            className="px-3 py-1.5 text-center text-[10px] font-semibold text-emerald-200 border-l border-white/20"
+            title={
+              "[현금흐름 계산로직]\n" +
+              "· 재고증감(전년비) = 당년 기말재고 − 전년 기말재고 (Tag 기준)\n" +
+              "  - 2026 BO연간목표: 당년 = 재고자산(BO.목표) 기말재고\n" +
+              "  - 2026 연간TGT: 당년 = 재고자산(TGT) 기말재고\n" +
+              "  - 전년: 2025 기말재고 (재고자산 TGT 하단 월별재고액 기초재고)\n" +
+              "· 대리상별 원가율 = 매출원가 × 1.13 ÷ Tag\n" +
+              "· 재고증감(원가환산, 표시값) = 재고증감(Tag) × 원가율 ÷ 1.13\n" +
+              "                         = 재고증감(Tag) × 매출원가 ÷ Tag\n" +
+              "· 합계 재고증감 = Σ 대리상별 원가환산값 (가중평균 아님)\n" +
+              "· OCF = 영업이익 − 재고증감(원가환산)"
+            }
+            className="px-3 py-1.5 text-center text-[10px] font-semibold text-emerald-200 border-l border-white/20 cursor-help"
           >
             현금흐름
           </th>
@@ -1321,7 +1333,7 @@ function PLTableHead({
         {isAnnualMode && (
           <>
             <th className="px-3 py-2.5 text-xs font-semibold text-emerald-700 whitespace-nowrap border-l border-slate-200">
-              재고증감(전년비)
+              재고YOY(원가기준)
             </th>
             <th className="px-3 py-2.5 text-xs font-bold text-emerald-700 whitespace-nowrap">OCF</th>
           </>
@@ -1454,6 +1466,7 @@ function TotalRow({
   isAnnualMode = false,
   directDetailHidden = false,
   stockChange = 0,
+  stockChangeTag = 0,
 }: {
   totals: TotalRowTotals;
   variant: PLTableVariant;
@@ -1465,8 +1478,10 @@ function TotalRow({
   dealerCogsRateOpen?: boolean;
   isAnnualMode?: boolean;
   directDetailHidden?: boolean;
-  /** annual 모드: 합계 재고증감(전년비) */
+  /** annual 모드: 합계 재고증감(원가환산, OCF 가산) */
   stockChange?: number;
+  /** annual 모드: 합계 재고증감(Tag 기준, tooltip용) */
+  stockChangeTag?: number;
   storeTagDetailOpen?: boolean;
   storeCogsRateOpen?: boolean;
 }) {
@@ -1498,8 +1513,8 @@ function TotalRow({
   );
 
   return (
-    <tr className="border-t-2 border-slate-200 bg-slate-100 font-semibold text-xs">
-      <td className="sticky left-0 z-10 bg-slate-100 px-3 py-2.5 text-left text-slate-800">합 계</td>
+    <tr className="border-t-2 border-slate-200 bg-slate-100 font-semibold text-xs sticky top-[60px] z-[15] [&>td]:bg-slate-100">
+      <td className="sticky left-0 z-20 bg-slate-100 px-3 py-2.5 text-left text-slate-800">합 계</td>
       {variant === "store" && (
         <>
           <td className="px-3 py-2.5 border-l border-slate-200" />
@@ -1551,24 +1566,31 @@ function TotalRow({
           ? fmtRate((totals.operatingProfit * PL_CALC.retailVatFactor) / totals.retail)
           : "—"}
       </td>
-      {isAnnualMode && (
-        <>
-          <td
-            className={`px-3 py-2.5 font-bold border-l border-slate-200 ${
-              stockChange >= 0 ? "text-emerald-700" : "text-red-700"
-            }`}
-          >
-            {f(stockChange)}
-          </td>
-          <td
-            className={`px-3 py-2.5 font-bold ${
-              totals.operatingProfit + stockChange >= 0 ? "text-emerald-700" : "text-red-700"
-            }`}
-          >
-            {f(totals.operatingProfit + stockChange)}
-          </td>
-        </>
-      )}
+      {isAnnualMode && (() => {
+        const stockTip =
+          `재고증감(Tag) 합계: ${fmt(stockChangeTag)} 천위안\n` +
+          `합계 재고증감(원가환산) = Σ 대리상별[ 재고증감(Tag) × 매출원가 ÷ Tag ] = ${fmt(stockChange)} 천위안\n` +
+          `OCF = 영업이익 − 재고증감(원가환산)`;
+        return (
+          <>
+            <td
+              title={stockTip}
+              className={`px-3 py-2.5 font-bold border-l border-slate-200 cursor-help ${
+                stockChange >= 0 ? "text-emerald-700" : "text-red-700"
+              }`}
+            >
+              {stockChange > 0 ? `+${fmt(stockChange)}` : f(stockChange)}
+            </td>
+            <td
+              className={`px-3 py-2.5 font-bold ${
+                totals.operatingProfit - stockChange >= 0 ? "text-emerald-700" : "text-red-700"
+              }`}
+            >
+              {f(totals.operatingProfit - stockChange)}
+            </td>
+          </>
+        );
+      })()}
       <td className={`px-3 py-2.5 border-l border-slate-200 ${c(totals.directCost)}`}>{f(totals.directCost)}</td>
       <td
         className={`px-3 py-2.5 tabular-nums ${cr === null ? "text-slate-400" : "text-slate-800"}`}
@@ -3029,10 +3051,17 @@ export default function PLView({
     [isAnnualMode, dealerStockMap, activeBrand, selectedMonth],
   );
 
-  const totalStockChange = useMemo(
-    () => (isAnnualMode ? rows.reduce((s, r) => s + stockLookup(r.accountId).change, 0) : 0),
-    [isAnnualMode, rows, stockLookup],
-  );
+  const { totalStockChangeTag, totalStockChangeCost } = useMemo(() => {
+    if (!isAnnualMode) return { totalStockChangeTag: 0, totalStockChangeCost: 0 };
+    let tagSum = 0;
+    let costSum = 0;
+    for (const r of rows) {
+      const ch = stockLookup(r.accountId).change;
+      tagSum += ch;
+      costSum += r.tag > 0 ? ch * r.cogs / r.tag : 0;
+    }
+    return { totalStockChangeTag: tagSum, totalStockChangeCost: costSum };
+  }, [isAnnualMode, rows, stockLookup]);
 
   return (
     <>
@@ -3049,9 +3078,8 @@ export default function PLView({
             </button>
             {(
               [
-                { key: "annual", label: "2026 BO연간목표", activeCls: "border-slate-400 bg-slate-100 text-slate-800", idleCls: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300" },
-                { key: "annualTgt", label: "2026년 연간TGT", activeCls: "border-slate-400 bg-slate-100 text-slate-800", idleCls: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300" },
-                { key: "annual25", label: "2025년 연간실적", activeCls: "border-purple-400 bg-purple-100 text-purple-800", idleCls: "border-purple-200 bg-white text-purple-700 hover:bg-purple-50 hover:border-purple-300" },
+                { key: "annual", label: "2026 BO연간목표", activeCls: "border-sky-300 bg-sky-100 text-sky-800 shadow-sm", idleCls: "border-sky-100 bg-sky-50/60 text-sky-600 hover:bg-sky-50 hover:border-sky-200" },
+                { key: "annualTgt", label: "2026년 연간TGT", activeCls: "border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm", idleCls: "border-emerald-100 bg-emerald-50/60 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200" },
               ] as const
             ).map((b) => {
               const active = selectedMonth === b.key;
@@ -3153,7 +3181,8 @@ export default function PLView({
                   isActualMode={isActual}
                   isAnnualMode={isAnnualMode}
                   directDetailHidden={directDetailHidden}
-                  stockChange={totalStockChange}
+                  stockChange={totalStockChangeCost}
+                  stockChangeTag={totalStockChangeTag}
                 />
               )}
               {rows.map((row, i) => {
@@ -3252,15 +3281,23 @@ export default function PLView({
                     </td>
                     {isAnnualMode && (() => {
                       const { change } = stockLookup(row.accountId);
-                      const ocf = row.operatingProfit + change;
+                      // 재고증감은 Tag 기준 → 원가 기준 환산: change × (매출원가 × 1.13 / Tag) ÷ 1.13 = change × cogs / tag
+                      const changeCost = row.tag > 0 ? change * row.cogs / row.tag : 0;
+                      const ocf = row.operatingProfit - changeCost;
+                      const stockTip =
+                        `재고증감(Tag): ${fmt(change)} 천위안\n` +
+                        `대리상 원가율 = 매출원가×1.13÷Tag = ${row.tag > 0 ? ((row.cogs * PL_CALC.retailVatFactor / row.tag) * 100).toFixed(1) : "—"}%\n` +
+                        `재고증감(원가환산) = 재고증감(Tag) × 원가율 ÷ 1.13 = ${fmt(changeCost)} 천위안\n` +
+                        `OCF = 영업이익 − 재고증감(원가환산)`;
                       return (
                         <>
                           <td
-                            className={`px-3 py-2 font-semibold border-l border-slate-200 ${
-                              change >= 0 ? "text-emerald-700" : "text-red-600"
+                            title={stockTip}
+                            className={`px-3 py-2 font-semibold border-l border-slate-200 cursor-help ${
+                              changeCost >= 0 ? "text-emerald-700" : "text-red-600"
                             }`}
                           >
-                            {fmt(change)}
+                            {changeCost > 0 ? `+${fmt(changeCost)}` : fmt(changeCost)}
                           </td>
                           <td
                             className={`px-3 py-2 font-semibold ${
