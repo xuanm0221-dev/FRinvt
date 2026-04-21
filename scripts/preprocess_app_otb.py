@@ -75,17 +75,8 @@ def get_cum_range() -> tuple[str, str, str]:
     return start_dt, end_dt, cum_label
 
 
-# ─── Snowflake 연결 ─────────────────────────────
-def get_connection():
-    return snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
-        schema=os.environ["SNOWFLAKE_SCHEMA"],
-        role=os.environ["SNOWFLAKE_ROLE"],
-    )
+# ─── Snowflake 연결 — JWT 인증 (scripts/snowflake_conn.py) ─────────
+from snowflake_conn import get_connection  # noqa: E402,F401
 
 
 # ─── 누적입고 쿼리 (의류·대상시즌 필터) ──────────

@@ -293,16 +293,7 @@ def merge_new_months(existing: dict, new_df: pd.DataFrame) -> dict:
     return existing
 
 
-def get_connection():
-    return snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
-        schema=os.environ["SNOWFLAKE_SCHEMA"],
-        role=os.environ["SNOWFLAKE_ROLE"],
-    )
+from snowflake_conn import get_connection  # noqa: E402,F401
 
 
 # 재고잔액 조회 (2025·2026 동일 로직)
